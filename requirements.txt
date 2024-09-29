@@ -1,0 +1,16 @@
+#langchain==0.1.6
+langchain
+langchain-community==0.0.19
+langchainhub
+langchain-openai
+chromadb
+bs4
+pypdf
+docx2txt
+pypdf
+faiss-cpu
+fasttext-langdetect
+#fasttext-langdetect @ git+https://github.com/zafercavdar/fasttext-langdetect.git
+#langdetect
+streamlit
+tiktoken

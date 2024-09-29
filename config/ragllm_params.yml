@@ -1,0 +1,15 @@
+# PATHS
+datapath: 'data/'
+credentials_path: 'config/credentials.yml'
+
+# SPLIT PARAMS
+chunk_size: 1000
+chunk_overlap: 200
+
+# GENERATION PARAMS
+#model: "gpt-3.5-turbo"
+model: "gpt-4"
+#model: "gpt-4-turbo-preview"
+temperature: 0.1
+assistant_role_instruction: "Eres un asistente para brindar ayuda a los profesores de UNIR."
+

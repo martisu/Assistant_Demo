@@ -1,0 +1,16 @@
+.idea
+.idea/*
+/config/credentials.yml
+/config/.ipynb_checkpoints/
+./data/
+data_tmp/
+data/
+otros_data
+./otros_data/*
+installapp.sh
+runapp.sh
+./exploration/.ipynb_checkpoints
+./exploration/.ipynb_checkpoints/*
+config/credentials.yml
+credentials.yml
+/src/demoragenv
