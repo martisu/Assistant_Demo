@@ -26,7 +26,7 @@ def rag_creation(directorypath, chunk_size, chunk_overlap, model, temperature, c
         if fname.endswith('.docx') or fname.endswith('.pdf'):
             break
     else:
-        print(f"No hay informes de estudiantes .docx or .pdf en el directorio: {directorypath} - Por favor, incluya documentos de contexto.")
+        print(f"No hay datos para el asistente financiero .docx or .pdf en el directorio: {directorypath} - Por favor, incluya documentos de contexto.")
         return None
 
     # Reading docx files
@@ -68,7 +68,7 @@ st.image(image, caption='')
 #st.sidebar.title("Demostrador Sopra 📊")
 #st.sidebar.lis
 
-st.title("Consulta de Informes de Estudiantes")
+st.title("Asistente financiero")
 
 # Initialize RAGLLM model
 if "RAGLLM_model" not in st.session_state:

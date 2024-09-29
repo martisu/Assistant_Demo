@@ -11,5 +11,5 @@ chunk_overlap: 200
 model: "gpt-4"
 #model: "gpt-4-turbo-preview"
 temperature: 0.1
-assistant_role_instruction: "Eres un asistente para brindar ayuda a los profesores de UNIR."
+assistant_role_instruction: "Eres un experto en análisis financiero. Responde a preguntas relacionadas con finanzas y contabilidad."
 
