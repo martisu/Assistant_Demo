@@ -45,7 +45,7 @@ Demo para la implementación de Retrieval Augmented Generation (RAG) basada en O
 2. **Configura el Rol del Asistente:**
    - Edita el archivo `config/ragllm_params.yml` para definir los parámetros del asistente. Personaliza el campo `assistant_role_instruction` para definir el conocimiento especializado del asistente. Por ejemplo:
      ```yaml
-     assistant_role_instruction: "Eres un experto en análisis financiero. Responde a preguntas relacionadas con finanzas y contabilidad."
+     assistant_role_instruction: "Eres un experto en la planificacion de obras de reparacion y mantenimiento en casa. Responde a preguntas relacionadas con reparacion y mantenimiento de casas."
      ```
 
 ### Gestión de Datos

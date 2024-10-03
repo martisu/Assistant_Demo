@@ -1,7 +1,7 @@
 # RAG LLM MANAGER
 """
     - PACKAGE class: **RAGLLM_Manager**
-    - Fecha publicación: febrero 2024
+    - Fecha publicación: Octubre 2024
 """
 
 # Dependencies
@@ -35,6 +35,7 @@ If you don't know the answer, just say that you don't know, don't try to make up
 Always use the Spanish language unless they tell you otherwise.
 Use 4 sentences maximum but keep the answer as concise as possible.
 Always say "other question?" in the specified language at the end of the answer.
+Avoid self references to the data folder such as "page", "figure"  or similars. 
 
 Context: {context}
 
@@ -95,7 +96,7 @@ def openai_api_calculate_cost(usage, model="gpt-4"):
 # ========= CLASS RAGLLM_Manager ================================================================
 # ===========================================================================================
 class RAGLLM_Manager:
-    # RAG LLM indexing and chatbot Manager
+    # RAG LLM manager for home project planning
 
     # ====================== CLASS PARAMS ======================================
     _loader = None
@@ -105,6 +106,7 @@ class RAGLLM_Manager:
     _contextualize_q_chain = None
     _rag_chain = None
     _chat_history = []
+    
 
     # ====================== CONSTRUCTOR ==================================================
     def __init__(self, credentials_path, assistant_role_instruction):
@@ -276,3 +278,70 @@ class RAGLLM_Manager:
         print(f"Total cost: ${total_cost:.4f}\n")
 
         return total_cost
+
+    # Agente1 -------------------------------------------------------------------------------
+class ProjectSelectorAgent(RAGLLM_Manager):
+    def __init__(self, credentials_path, assistant_role_instruction):
+        super().__init__(credentials_path, assistant_role_instruction)
+
+        # Remodelar
+        self.remodelar_keywords = ["remodelar", "reorganizar", "reestructurar", "modificar"]
+
+        # Reparar
+        self.reparar_keywords = ["reparar", "arreglar", "restaurar", "remendar", "recomponer", "cambiar"]
+
+        # Interior y exterior
+        self.interior_keywords = ["baño", "cocina", "sala", "habitacion", "comedor"]
+        self.exterior_keywords = ["jardín", "fachada", "terraza", "garaje", "patio", "puerta", "valla", "pared", "pintura exterior"]
+
+        # Miscelanios
+        self.component_keywords = ["interruptor", "enchufe", "bombilla", "luz", "foco", "cable", "puerta", "ventana"]
+
+    def classify_project(self, user_input):
+        # 1. Clasificar (Remodelar or Reparar)
+        action_type = "unknown"
+        if any(word in user_input.lower() for word in self.remodelar_keywords):
+            action_type = "remodelar"
+        elif any(word in user_input.lower() for word in self.reparar_keywords):
+            action_type = "reparar"
+
+        # 2. Clasificar interior o exterior
+        project_type = "unknown"
+        if any(word in user_input.lower() for word in self.interior_keywords):
+            project_type = "interior"
+        elif any(word in user_input.lower() for word in self.exterior_keywords):
+            project_type = "exterior"
+
+        # 3.Identificar el componente mencionado
+        component = "general"
+        for word in self.component_keywords:
+            if word in user_input.lower():
+                component = word
+                break
+
+        # Return the classifications
+        return {
+            "action_type": action_type,
+            "project_type": project_type,
+            "component": component
+        }
+
+    def generate_project_response(self, user_input):
+        classification = self.classify_project(user_input)
+        action_type = classification["action_type"]
+        project_type = classification["project_type"]
+        component = classification["component"]
+
+        
+        if action_type == "remodelar":
+            if component == "general":
+                response = f"¡Excelente! Estás planeando un proyecto de **remodelación** para {project_type}. ¿Por dónde te gustaría empezar?"
+            else:
+                response = f"Este es un proyecto de **remodelación** para {project_type}, y parece que quieres trabajar en el/la **{component}**."
+        elif action_type == "reparar":
+            if component == "general":  
+                response = f"¡Perfecto! Estás planeando un proyecto de **reparación** para {project_type}. ¿Qué parte te gustaría reparar primero?"
+            else:
+                response = f"Este es un proyecto de **reparación** para {project_type}, y parece que quieres arreglar el/la **{component}**."
+        else:
+            response = "No pude identificar si es un proyecto de reparación o remodelación."

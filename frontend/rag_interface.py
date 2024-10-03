@@ -68,7 +68,7 @@ st.image(image, caption='')
 #st.sidebar.title("Demostrador Sopra 📊")
 #st.sidebar.lis
 
-st.title("Consulta de Informes de Estudiantes")
+st.title("Asistente de Planificación de Obras en Casa")
 
 # Initialize RAGLLM model
 if "RAGLLM_model" not in st.session_state:
@@ -107,7 +107,7 @@ for message in st.session_state.messages:
 
 # Accept user input
 
-if prompt := st.chat_input("¿En qué puedo ayudarte?"):
+if prompt := st.chat_input("¿Qué construimos o reparamos hoy?"):
     # Add user message to chat history
     st.session_state.messages.append({"role": "user", "content": prompt})
     # Display user message in chat message container
