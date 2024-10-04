@@ -1,6 +1,7 @@
 #langchain==0.1.6
 langchain
-langchain-community==0.0.19
+# langchain-community==0.0.19
+langchain-community==0.0.29
 langchainhub
 langchain-openai
 chromadb
@@ -14,3 +15,5 @@ fasttext-langdetect
 #langdetect
 streamlit
 tiktoken
+crewai==0.28.8
+crewai_tools==0.1.6

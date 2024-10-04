@@ -14,3 +14,4 @@ runapp.sh
 config/credentials.yml
 credentials.yml
 /src/demoragenv
+/src/__pycache__
