@@ -20,7 +20,7 @@ class CrewAIChatbot:
         )
 
     def planificator_task(self, question):
-        agent = self.create_agent()
+        agent = self.planificator()
         return Task(
             description=f"Answer the following question about home improvement: {question}",
             agent=agent,
@@ -29,7 +29,7 @@ class CrewAIChatbot:
 
     def get_response(self, question):
         try:
-            task = self.create_task(question)
+            task = self.planificator_task(question)
             crew = Crew(
                 agents=[task.agent],
                 tasks=[task],
