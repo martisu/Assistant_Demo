@@ -10,7 +10,7 @@ class CrewAIChatbot:
         self.openai_api_key = credentials["OPENAI_API_KEY"]
         self.llm = ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=self.openai_api_key)
 
-    def create_agent(self):
+    def planificator(self):
         return Agent(
             role='Home Improvement Assistant',
             goal='Provide helpful advice on home improvement projects',
@@ -19,7 +19,7 @@ class CrewAIChatbot:
             llm=self.llm
         )
 
-    def create_task(self, question):
+    def planificator_task(self, question):
         agent = self.create_agent()
         return Task(
             description=f"Answer the following question about home improvement: {question}",

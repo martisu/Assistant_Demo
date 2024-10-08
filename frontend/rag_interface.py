@@ -3,7 +3,7 @@ import yaml
 import os
 import streamlit as st
 from PIL import Image
-from home_work_plan import CrewAIChatbot
+from src.home_work_plan import CrewAIChatbot
 
 config_path = "./config/"
 
