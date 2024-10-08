@@ -13,8 +13,10 @@ class CrewAIChatbot:
     def planificator(self):
         return Agent(
             role='Home Improvement Assistant',
-            goal='Provide helpful advice on home improvement projects',
-            backstory="You are an AI assistant specialized in home improvement and DIY projects.",
+            goal='Provide helpful advice on home improvement projects.',
+            backstory=(
+                "You are an experience assistant specialized in home improvemen, home repairs and DIY projects."
+                "Always use the Spanish language unless they tell you otherwise. "),
             verbose=True,
             llm=self.llm
         )

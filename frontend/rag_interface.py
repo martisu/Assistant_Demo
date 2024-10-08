@@ -8,7 +8,7 @@ from src.home_work_plan import CrewAIChatbot
 config_path = "./config/"
 
 st.set_page_config(
-   page_title="Home Improvement Assistant",
+   page_title="Asistente ",
    page_icon="🏡",
    layout="wide",
 )
