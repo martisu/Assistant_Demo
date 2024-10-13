@@ -83,7 +83,7 @@ class CrewAIChatbot:
         return Agent(
             role='Renovation Expert',
             goal='Provide detailed guidance on home renovation projects.',
-            tools=[self.search_tool] + self.scrape_tools + self.pdf_tools,
+            tools=[self.search_tool] + self.pdf_tools,
             verbose=True,
             backstory=(
                 "You are an experienced expert in home renovations. You offer in-depth advice on renovation projects, "
