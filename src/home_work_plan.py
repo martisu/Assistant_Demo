@@ -1,6 +1,6 @@
 from crewai import Agent, Task, Crew, Process
 from langchain_openai import ChatOpenAI
-from langchain.tools import DuckDuckGoSearchRun
+from langchain_community.tools import DuckDuckGoSearchRun
 import yaml
 from crewai_tools import FileReadTool, ScrapeWebsiteTool
 
