@@ -152,26 +152,66 @@ class CrewAIChatbot:
         )
 
 
-    ##------------------------------------TAKS------------------------------------
+##------------------------------------TASKS------------------------------------
+
     def classify_project_task(self, question):
         return Task(
-            description=f"Classify the following home improvement project: {question}. You can use synonym pages to find keywords similar to renovation or repair.",
+            description=f"Classify the following home improvement project: {question}. "
+                        f"You can use synonym pages to find keywords similar to renovation or repair.",
             agent=self.planificator(),
             expected_output="Project classified as 'repair' or 'renovation'."
-            
         )
-        
+
     def provide_guidance_task(self, question, project_type):
         agent = self.repair_expert() if project_type == 'repair' else self.renovation_expert()
         return Task(
-            description=f"Provide detailed guidance for this {project_type} project: {question}",
+            description=f"Provide detailed guidance for this {project_type} project: {question}.",
             agent=agent,
             expected_output=(
                 "A complete guide for the home improvement project, including step-by-step instructions, "
                 "required materials, estimated time and cost, and any safety precautions."
             ),
-            human_input = True
+            human_input=True
         )
+
+    def list_materials_task(self, project_description):
+        return Task(
+            description=f"List the materials required for the following project: {project_description}. "
+                        f"Include alternatives where applicable.",
+            agent=self.materials_agent(),
+            expected_output=(
+                "A markdown list of materials and their alternatives, e.g.,:\n\n"
+                "- **Material 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
+            ),
+            human_input=True
+        )
+
+    def list_tools_task(self, project_description):
+        return Task(
+            description=f"List the tools required for the following project: {project_description}. "
+                        f"Include alternatives where applicable.",
+            agent=self.herramientas_agent(),
+            expected_output=(
+                "A markdown list of tools and their alternatives, e.g.,:\n\n"
+                "- **Tool 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
+            ),
+            human_input=True
+        )
+
+    def cost_estimation_task(self, materials_list):
+        return Task(
+            description=f"Provide a detailed cost estimation for the following materials: {materials_list}. "
+                        f"Include costs for alternatives where applicable.",
+            agent=self.cost_agent(),
+            expected_output=(
+                "A markdown table listing materials and their costs, including alternatives, e.g.,:\n\n"
+                "| Material        | Cost  | Alternatives               |\n"
+                "|----------------|-------|----------------------------|\n"
+                "| Material 1     | $10   | Alternative 1 ($8), Alt 2 ($12) |\n"
+            ),
+            human_input=True
+        )
+
     ##------------------------------------CREATE CREW------------------------------------
 
     def get_response(self, question):
