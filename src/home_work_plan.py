@@ -50,15 +50,17 @@ class CrewAIChatbot:
     def planificator(self):
         return Agent(
             role='Project Classifier',
-            goal='Determine whether a home improvement project is a repair or a renovation.',
+            goal='Classify whether a home improvement project is a repair or a renovation.',
             tools=[self.search_tool],
             verbose=True,
             backstory=(
                 "You are an expert in classifying home improvement projects. "
-                "Your role is to determine if a project is a repair or a renovation based on its scope and complexity."
-                "Always respond in Spanish unless otherwise indicated."
-                "Use a maximum of 4 sentences, but keep the response as concise as possible."
-                "Always end with 'otra pregunta' (another question) in the specified language."
+                "Your task is to determine if a project is a **repair** (fixing or restoring something damaged) "
+                "or a **renovation** (improving or modernizing an existing feature) based on its scope and complexity. "
+                "Always respond in Spanish unless otherwise indicated. "
+                "If you don't know the answer, just say you don't know, without making one up. "
+                "Use a maximum of one line per response to keep it concise. "
+                "Always end your response with 'another question?' in the specified language."
             ),
             llm=self.llm
         )
@@ -70,14 +72,16 @@ class CrewAIChatbot:
             tools=[self.search_tool] + self.scrape_tools + self.pdf_tools,
             verbose=True,
             backstory=(
-                "You are an experienced expert in home repairs. You provide comprehensive guidance on repair projects, "
-                "focusing on fixes and maintenance tasks that do not require significant structural changes."
-                "Always respond in Spanish unless otherwise indicated."
-                "Use a maximum of 4 sentences, but keep the response as concise as possible."
-                "Always end with 'otra pregunta' (another question) in the specified language."
+                "You are an experienced expert in home repairs. "
+                "Your role is to provide clear and practical guidance on repair projects, "
+                "focusing on fixes and maintenance tasks that do not require major structural changes. "
+                "Always respond in Spanish unless otherwise indicated. "
+                "Use a maximum of four sentences to keep the response concise. "
+                "Always end your response with 'another question?' in the specified language."
             ),
             llm=self.llm
         )
+
 
     def renovation_expert(self):
         return Agent(
@@ -86,59 +90,67 @@ class CrewAIChatbot:
             tools=[self.search_tool] + self.pdf_tools,
             verbose=True,
             backstory=(
-                "You are an experienced expert in home renovations. You offer in-depth advice on renovation projects, "
-                "especially those involving significant structural changes or additions to the house."
-                "Always respond in Spanish unless otherwise indicated."
-                "Use a maximum of 4 sentences, but keep the response as concise as possible."
-                "Always end with 'otra pregunta' (another question) in the specified language."
+                "You are an experienced expert in home renovations. "
+                "Your role is to provide in-depth advice on renovation projects, "
+                "particularly those involving major structural changes or additions to the home. "
+                "Always respond in Spanish unless otherwise indicated. "
+                "Use a maximum of four sentences to keep the response concise. "
+                "Always end your response with 'another question?' in the specified language."
             ),
             llm=self.llm
         )
+
     
     def materials_agent(self):
         return Agent(
-            role='Materials expert',
-            goal='Provide a detailed list of Materials used for the job',
+            role='Materials Expert',
+            goal='Provide a detailed list of materials used for the job.',
             tools=[self.search_tool] + self.scrape_tools + self.pdf_tools,
             verbose=True,
             backstory=(
-                "You are an experienced expert in construction. You offer in-depth advice of materials used."
-                "Make a list using markdown with the materials and it's alternatives"
-                "Always respond in Spanish unless otherwise indicated."
-                "Use a maximum of 4 sentences, but keep the response as concise as possible."
+                "You are an experienced expert in construction. "
+                "Your role is to provide detailed advice on materials used for various projects. "
+                "Create a list using markdown that includes the materials and their alternatives. "
+                "Always respond in Spanish unless otherwise indicated. "
+                "Use a maximum of four sentences to keep the response concise."
             ),
             llm=self.llm
         )
+
+    
     def herramientas_agent(self):
         return Agent(
-            role='Tools expert',
-            goal='Provide a detailed list of Tools used for the job',
+            role='Tools Expert',
+            goal='Provide a detailed list of tools used for the job.',
             tools=[self.search_tool] + self.scrape_tools + self.pdf_tools,
             verbose=True,
             backstory=(
-               "You are an experienced expert in construction. You offer in-depth advice of tools used."
-                "Make a list using markdown with the tools and it's alternatives"
-                "Always respond in Spanish unless otherwise indicated."
-                "Use a maximum of 4 sentences, but keep the response as concise as possible."
+                "You are an experienced expert in construction. "
+                "Your role is to provide detailed advice on tools required for various tasks. "
+                "Create a list using markdown that includes the tools and their alternatives. "
+                "Always respond in Spanish unless otherwise indicated. "
+                "Use a maximum of four sentences to keep the response concise."
             ),
             llm=self.llm
         )
+
     
     def cost_agent(self):
         return Agent(
-            role='Cost determinator',
-            goal='Based on the list of materials provide a table with the costs',
+            role='Cost Determinator',
+            goal='Based on the list of materials, provide a table with the costs.',
             tools=[self.search_tool] + self.scrape_tools + self.pdf_tools,
             verbose=True,
             backstory=(
-               "You are a cost expert in construction. You offer in-depth estimation of the materials used."
-                "Make a list using markdown with the cost of each material and it's alternatives"
-                "Always respond in Spanish unless otherwise indicated."
-                "Use a maximum of 4 sentences, but keep the response as concise as possible."
+                "You are a cost expert in construction. "
+                "Your role is to provide detailed cost estimations for materials used. "
+                "Create a list using markdown that includes the costs of each material and their alternatives. "
+                "Always respond in Spanish unless otherwise indicated. "
+                "Use a maximum of four sentences to keep the response concise."
             ),
             llm=self.llm
         )
-    
+
 
     ##------------------------------------TAKS------------------------------------
     def classify_project_task(self, question):
@@ -146,8 +158,9 @@ class CrewAIChatbot:
             description=f"Classify the following home improvement project: {question}. You can use synonym pages to find keywords similar to renovation or repair.",
             agent=self.planificator(),
             expected_output="Project classified as 'repair' or 'renovation'."
+            
         )
-
+        
     def provide_guidance_task(self, question, project_type):
         agent = self.repair_expert() if project_type == 'repair' else self.renovation_expert()
         return Task(
@@ -156,7 +169,8 @@ class CrewAIChatbot:
             expected_output=(
                 "A complete guide for the home improvement project, including step-by-step instructions, "
                 "required materials, estimated time and cost, and any safety precautions."
-            )
+            ),
+            human_input = True
         )
     ##------------------------------------CREATE CREW------------------------------------
 
@@ -165,6 +179,7 @@ class CrewAIChatbot:
             # First, classify the project
             
             classification_task = self.classify_project_task(question)
+            
             classification_crew = Crew(
                 agents=[classification_task.agent],
                 tasks=[classification_task],
