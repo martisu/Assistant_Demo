@@ -43,7 +43,7 @@ if prompt := st.chat_input("Que construimos hoy?"):
 
     # Get response from CrewAI chatbot
     with st.chat_message("assistant"):
-        response = st.session_state.crewai_chatbot.get_response(prompt)
+        response = st.session_state.crewai_chatbot.get_response(prompt, st.session_state.messages)
         st.markdown(response)
 
     # Add assistant response to chat history
