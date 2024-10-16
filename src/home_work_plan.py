@@ -69,7 +69,7 @@ class CrewAIChatbot:
         return Agent(
             role='Repair Expert',
             goal='Provide detailed guidance on home repair projects.',
-            tools=[self.search_tool] + self.scrape_tools + self.pdf_tools,
+            tools=[self.search_tool] + self.pdf_tools,
             verbose=True,
             backstory=(
                 "You are an experienced expert in home repairs. "
@@ -105,7 +105,7 @@ class CrewAIChatbot:
         return Agent(
             role='Materials Expert',
             goal='Provide a detailed list of materials used for the job.',
-            tools=[self.search_tool] + self.scrape_tools + self.pdf_tools,
+            tools=self.search_tool,
             verbose=True,
             backstory=(
                 "You are an experienced expert in construction. "
@@ -118,11 +118,11 @@ class CrewAIChatbot:
         )
 
     
-    def herramientas_agent(self):
+    def tools_agent(self):
         return Agent(
             role='Tools Expert',
             goal='Provide a detailed list of tools used for the job.',
-            tools=[self.search_tool] + self.scrape_tools + self.pdf_tools,
+            tools=[self.search_tool,self.pdf_tools],
             verbose=True,
             backstory=(
                 "You are an experienced expert in construction. "
@@ -139,7 +139,7 @@ class CrewAIChatbot:
         return Agent(
             role='Cost Determinator',
             goal='Based on the list of materials, provide a table with the costs.',
-            tools=[self.search_tool] + self.scrape_tools + self.pdf_tools,
+            tools=self.search_tool,
             verbose=True,
             backstory=(
                 "You are a cost expert in construction. "
@@ -147,6 +147,20 @@ class CrewAIChatbot:
                 "Create a list using markdown that includes the costs of each material and their alternatives. "
                 "Always respond in Spanish unless otherwise indicated. "
                 "Use a maximum of four sentences to keep the response concise."
+            ),
+            llm=self.llm
+        )
+    def step_by_step_agent(self):
+        return Agent(
+            role='Step-by-Step Guide',
+            goal='Provide detailed step-by-step instructions for any task.',
+            tools=[self.search_tool] + self.pdf_tools,
+            verbose=True,
+            backstory=(
+                "You are an expert guide. Your role is to break down complex tasks into clear, manageable steps."
+                "Always ensure the instructions are simple and precise, adjusting based on the user's feedback."
+                "Provide explanations for each step, but keep them concise."
+                "Respond in Spanish unless otherwise indicated."
             ),
             llm=self.llm
         )
@@ -177,6 +191,7 @@ class CrewAIChatbot:
     def list_materials_task(self, project_description):
         return Task(
             description=f"List the materials required for the following project: {project_description}. "
+                        f"It should only contain the MATERIALS, DO NOT add the TOOLS"
                         f"Include alternatives where applicable.",
             agent=self.materials_agent(),
             expected_output=(
@@ -189,8 +204,8 @@ class CrewAIChatbot:
     def list_tools_task(self, project_description):
         return Task(
             description=f"List the tools required for the following project: {project_description}. "
-                        f"Include alternatives where applicable.",
-            agent=self.herramientas_agent(),
+                        f"It should only contain the TOOLS, DO NOT add the MATERIALS",
+            agent=self.tools_agent(),
             expected_output=(
                 "A markdown list of tools and their alternatives, e.g.,:\n\n"
                 "- **Tool 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
@@ -211,6 +226,22 @@ class CrewAIChatbot:
             ),
             # human_input=True
         )
+    def step_by_step_task(self, repair_or_renovation_process):
+        return Task(
+            description=f"Provide detailed step-by-step instructions for the following repair or renovation process: {repair_or_renovation_process}. "
+                        f"Ensure that the steps are easy to follow and comprehensive, covering all necessary tools, materials, and safety precautions.",
+            agent=self.step_by_step_agent(),
+            expected_output=(
+                "A list of detailed steps for the repair or renovation process. For example:\n\n"
+                "1. Identify the scope of the repair or renovation.\n"
+                "2. Gather all necessary tools and materials.\n"
+                "3. Prepare the work area to ensure safety and efficiency.\n"
+                "4. Step-by-step breakdown of the actual work (e.g., removing old materials, installing new ones).\n"
+                "5. Final touches and clean-up instructions.\n"
+            ),
+            # human_input=True  # Uncomment if you want to enable human input
+        )
+
 
     ##------------------------------------CREATE CREW------------------------------------
 
@@ -218,12 +249,12 @@ class CrewAIChatbot:
         try:
             # Step 1: Classify the project
             classification_task = self.classify_project_task(question)
-            crew = Crew(
+            classification_crew = Crew(
                 agents=[classification_task.agent],
                 tasks=[classification_task],
                 verbose=True
             )
-            result = crew.kickoff()
+            result = classification_crew.kickoff()
             project_type = 'repair' if 'repair' in result.lower() else 'renovation'
 
             # Step 2: Provide guidance
@@ -236,18 +267,22 @@ class CrewAIChatbot:
             tools_task = self.list_tools_task(question)
             
             # Step 5: Cost estimation
-            cost_task = self.cost_estimation_task("Materials from the previous task")
+            cost_task = self.cost_estimation_task(question)  # Changed to use the question directly
+
+            # Step 6: Step-by-step guidance
+            step_by_step_task = self.step_by_step_task(question)
 
             # Create the main crew
             home_improvement_crew = Crew(
-                agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent],
-                tasks=[guidance_task, materials_task, tools_task, cost_task],
+                agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent, self.step_by_step_agent()],
+                tasks=[guidance_task, materials_task, tools_task, cost_task, step_by_step_task],
                 verbose=2
             )
             
-
             result = home_improvement_crew.kickoff()
 
             return result
+        except AttributeError as e:
+            return f"Lo siento, parece que hay un problema con una de las herramientas o atributos: {str(e)}"
         except Exception as e:
-            return f"Perdon, encontre un error en encontrar una solucion : {str(e)}"
+            return f"Perdón, encontré un error al buscar una solución: {str(e)}"
