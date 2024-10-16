@@ -216,26 +216,37 @@ class CrewAIChatbot:
 
     def get_response(self, question):
         try:
-            # First, classify the project
-            
+            # Step 1: Classify the project
             classification_task = self.classify_project_task(question)
-            
-            classification_crew = Crew(
+            crew = Crew(
                 agents=[classification_task.agent],
                 tasks=[classification_task],
-                verbose=2
+                verbose=True
             )
-            project_type = classification_crew.kickoff()
+            result = crew.kickoff()
+            project_type = 'repair' if 'repair' in result.lower() else 'renovation'
 
-            # Then, provide guidance based on the classification
+            # Step 2: Provide guidance
             guidance_task = self.provide_guidance_task(question, project_type)
-            guidance_crew = Crew(
-                agents=[guidance_task.agent],
-                tasks=[guidance_task],
+            
+            # Step 3: List materials
+            materials_task = self.list_materials_task(question)
+            
+            # Step 4: List tools
+            tools_task = self.list_tools_task(question)
+            
+            # Step 5: Cost estimation
+            cost_task = self.cost_estimation_task("Materials from the previous task")
+
+            # Create the main crew
+            home_improvement_crew = Crew(
+                agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent],
+                tasks=[guidance_task, materials_task, tools_task, cost_task],
                 verbose=2
             )
+            
 
-            result = guidance_crew.kickoff()
+            result = home_improvement_crew.kickoff()
 
             return result
         except Exception as e:
