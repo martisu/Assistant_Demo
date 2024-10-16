@@ -171,7 +171,7 @@ class CrewAIChatbot:
                 "A complete guide for the home improvement project, including step-by-step instructions, "
                 "required materials, estimated time and cost, and any safety precautions."
             ),
-            human_input=True
+            # human_input=True
         )
 
     def list_materials_task(self, project_description):
@@ -183,7 +183,7 @@ class CrewAIChatbot:
                 "A markdown list of materials and their alternatives, e.g.,:\n\n"
                 "- **Material 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
             ),
-            human_input=True
+            # human_input=True
         )
 
     def list_tools_task(self, project_description):
@@ -195,7 +195,7 @@ class CrewAIChatbot:
                 "A markdown list of tools and their alternatives, e.g.,:\n\n"
                 "- **Tool 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
             ),
-            human_input=True
+            # human_input=True
         )
 
     def cost_estimation_task(self, materials_list):
@@ -209,7 +209,7 @@ class CrewAIChatbot:
                 "|----------------|-------|----------------------------|\n"
                 "| Material 1     | $10   | Alternative 1 ($8), Alt 2 ($12) |\n"
             ),
-            human_input=True
+            # human_input=True
         )
 
     ##------------------------------------CREATE CREW------------------------------------
