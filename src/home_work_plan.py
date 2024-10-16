@@ -29,6 +29,8 @@ class CrewAIChatbot:
                 "Always use the Spanish language unless they tell you otherwise."
                 "Use 4 sentences maximum but keep the answer as concise as possible."
                 "Always say 'other question' in the specified language at the end of the answer."
+                "If it's not in the scope of repair or renovation then ask the quesiton 'No he entendido tu pregunta, pregunta de nuevo '"
+                "DO NOT ANSWER something inrelated to construction of houses"
             ),
             llm=self.llm
         )
@@ -83,6 +85,7 @@ class CrewAIChatbot:
                 "required materials, estimated time and cost, and any safety precautions."
             )
         )
+    
 # CREATE CREW
     def get_response(self, question):
         try:
