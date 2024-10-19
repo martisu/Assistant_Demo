@@ -70,7 +70,7 @@ class CrewAIChatbot:
         return Agent(
             role='Materials Expert',
             goal='Provide a detailed list of materials used for the job.',
-            tools=self.search_tool,
+            tools=[file_read_tool, scrape_tool, search_tool],
             verbose=True,
             backstory=(
                 "You are an experienced expert in construction. "
@@ -87,7 +87,7 @@ class CrewAIChatbot:
         return Agent(
             role='Tools Expert',
             goal='Provide a detailed list of tools used for the job.',
-            tools=[self.search_tool,self.pdf_tools],
+            tools=[file_read_tool, scrape_tool, search_tool],
             verbose=True,
             backstory=(
                 "You are an experienced expert in construction. "
@@ -104,7 +104,7 @@ class CrewAIChatbot:
         return Agent(
             role='Cost Determinator',
             goal='Based on the list of materials, provide a table with the costs.',
-            tools=self.search_tool,
+            tools=[file_read_tool, scrape_tool, search_tool],
             verbose=True,
             backstory=(
                 "You are a cost expert in construction. "
@@ -119,7 +119,7 @@ class CrewAIChatbot:
         return Agent(
             role='Step-by-Step Guide',
             goal='Provide detailed step-by-step instructions for any task.',
-            tools=[self.search_tool] + self.pdf_tools,
+            tools=[file_read_tool, scrape_tool, search_tool],
             verbose=True,
             backstory=(
                 "You are an expert guide. Your role is to break down complex tasks into clear, manageable steps."
