@@ -66,6 +66,70 @@ class CrewAIChatbot:
             ),
             llm=self.llm
         )
+    def materials_agent(self):
+        return Agent(
+            role='Materials Expert',
+            goal='Provide a detailed list of materials used for the job.',
+            tools=self.search_tool,
+            verbose=True,
+            backstory=(
+                "You are an experienced expert in construction. "
+                "Your role is to provide detailed advice on materials used for various projects. "
+                "Create a list using markdown that includes the materials and their alternatives. "
+                "Always respond in Spanish unless otherwise indicated. "
+                "Use a maximum of four sentences to keep the response concise."
+            ),
+            llm=self.llm
+        )
+
+    
+    def tools_agent(self):
+        return Agent(
+            role='Tools Expert',
+            goal='Provide a detailed list of tools used for the job.',
+            tools=[self.search_tool,self.pdf_tools],
+            verbose=True,
+            backstory=(
+                "You are an experienced expert in construction. "
+                "Your role is to provide detailed advice on tools required for various tasks. "
+                "Create a list using markdown that includes the tools and their alternatives. "
+                "Always respond in Spanish unless otherwise indicated. "
+                "Use a maximum of four sentences to keep the response concise."
+            ),
+            llm=self.llm
+        )
+
+    
+    def cost_agent(self):
+        return Agent(
+            role='Cost Determinator',
+            goal='Based on the list of materials, provide a table with the costs.',
+            tools=self.search_tool,
+            verbose=True,
+            backstory=(
+                "You are a cost expert in construction. "
+                "Your role is to provide detailed cost estimations for materials used. "
+                "Create a list using markdown that includes the costs of each material and their alternatives. "
+                "Always respond in Spanish unless otherwise indicated. "
+                "Use a maximum of four sentences to keep the response concise."
+            ),
+            llm=self.llm
+        )
+    def step_by_step_agent(self):
+        return Agent(
+            role='Step-by-Step Guide',
+            goal='Provide detailed step-by-step instructions for any task.',
+            tools=[self.search_tool] + self.pdf_tools,
+            verbose=True,
+            backstory=(
+                "You are an expert guide. Your role is to break down complex tasks into clear, manageable steps."
+                "Always ensure the instructions are simple and precise, adjusting based on the user's feedback."
+                "Provide explanations for each step, but keep them concise."
+                "Respond in Spanish unless otherwise indicated."
+            ),
+            llm=self.llm
+        )
+    
 # TASKS
     def classify_project_task(self, question):
         agent = self.planificator()
@@ -84,6 +148,59 @@ class CrewAIChatbot:
                 "A comprehensive guide for the home improvement project, including step-by-step instructions, "
                 "required materials, estimated time and cost, and any safety precautions."
             )
+        )
+    def list_materials_task(self, project_description):
+        return Task(
+            description=f"List the materials required for the following project: {project_description}. "
+                        f"It should only contain the MATERIALS, DO NOT add the TOOLS"
+                        f"Include alternatives where applicable.",
+            agent=self.materials_agent(),
+            expected_output=(
+                "A markdown list of materials and their alternatives, e.g.,:\n\n"
+                "- **Material 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
+            ),
+            # human_input=True
+        )
+
+    def list_tools_task(self, project_description):
+        return Task(
+            description=f"List the tools required for the following project: {project_description}. "
+                        f"It should only contain the TOOLS, DO NOT add the MATERIALS",
+            agent=self.tools_agent(),
+            expected_output=(
+                "A markdown list of tools and their alternatives, e.g.,:\n\n"
+                "- **Tool 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
+            ),
+            # human_input=True
+        )
+
+    def cost_estimation_task(self, materials_list):
+        return Task(
+            description=f"Provide a detailed cost estimation for the following materials: {materials_list}. "
+                        f"Include costs for alternatives where applicable.",
+            agent=self.cost_agent(),
+            expected_output=(
+                "A markdown table listing materials and their costs, including alternatives, e.g.,:\n\n"
+                "| Material        | Cost  | Alternatives               |\n"
+                "|----------------|-------|----------------------------|\n"
+                "| Material 1     | $10   | Alternative 1 ($8), Alt 2 ($12) |\n"
+            ),
+            # human_input=True
+        )
+    def step_by_step_task(self, repair_or_renovation_process):
+        return Task(
+            description=f"Provide detailed step-by-step instructions for the following repair or renovation process: {repair_or_renovation_process}. "
+                        f"Ensure that the steps are easy to follow and comprehensive, covering all necessary tools, materials, and safety precautions.",
+            agent=self.step_by_step_agent(),
+            expected_output=(
+                "A list of detailed steps for the repair or renovation process. For example:\n\n"
+                "1. Identify the scope of the repair or renovation.\n"
+                "2. Gather all necessary tools and materials.\n"
+                "3. Prepare the work area to ensure safety and efficiency.\n"
+                "4. Step-by-step breakdown of the actual work (e.g., removing old materials, installing new ones).\n"
+                "5. Final touches and clean-up instructions.\n"
+            ),
+            # human_input=True  # Uncomment if you want to enable human input
         )
     
 # CREATE CREW
