@@ -35,7 +35,7 @@ class CrewAIChatbot:
             llm=self.llm
         )
 
-    def repair_expert(self):
+    def repair_agent(self):
         return Agent(
             role='Repair Expert',
             goal='Provide detailed guidance on home repair projects.',
@@ -51,7 +51,7 @@ class CrewAIChatbot:
             llm=self.llm
         )
 
-    def renovation_expert(self):
+    def renovation_agent(self):
         return Agent(
             role='Renovation Expert',
             goal='Provide detailed guidance on home renovation projects.',
@@ -76,7 +76,7 @@ class CrewAIChatbot:
         )
 
     def provide_guidance_task(self, question, project_type):
-        agent = self.repair_expert() if project_type == 'repair' else self.renovation_expert()
+        agent = self.repair_agent() if project_type == 'repair' else self.renovation_agent()
         return Task(
             description=f"Provide detailed guidance for this {project_type} project: {question}",
             agent=agent,
