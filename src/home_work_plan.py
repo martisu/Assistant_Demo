@@ -75,7 +75,7 @@ class CrewAIChatbot:
             llm=self.llm
         )
 
-    def repair_expert(self):
+    def repair_agent(self):
         return Agent(
             role='Repair Expert',
             goal='Provide detailed guidance on home repair projects.',
@@ -93,7 +93,7 @@ class CrewAIChatbot:
         )
 
 
-    def renovation_expert(self):
+    def renovation_agent(self):
         return Agent(
             role='Renovation Expert',
             goal='Provide detailed guidance on home renovation projects.',
@@ -160,7 +160,7 @@ class CrewAIChatbot:
             ),
             llm=self.llm
         )
-    def step_by_step_agent(self):
+    def guide_agent(self):
         return Agent(
             role='Step-by-Step Guide',
             goal='Provide detailed step-by-step instructions for any task.',
@@ -187,7 +187,7 @@ class CrewAIChatbot:
         )
 
     def provide_guidance_task(self, question, project_type):
-        agent = self.repair_expert() if project_type == 'repair' else self.renovation_expert()
+        agent = self.repair_agent() if project_type == 'repair' else self.renovation_agent()
         return Task(
             description=f"Provide detailed guidance for this {project_type} project: {question}.",
             agent=agent,
@@ -198,7 +198,7 @@ class CrewAIChatbot:
             # human_input=True
         )
 
-    def list_materials_task(self, project_description):
+    def materials_task(self, project_description):
         return Task(
             description=f"List the materials required for the following project: {project_description}. "
                         f"It should only contain the MATERIALS, DO NOT add the TOOLS"
@@ -211,7 +211,7 @@ class CrewAIChatbot:
             # human_input=True
         )
 
-    def list_tools_task(self, project_description):
+    def tools_task(self, project_description):
         return Task(
             description=f"List the tools required for the following project: {project_description}. "
                         f"It should only contain the TOOLS, DO NOT add the MATERIALS",
@@ -236,11 +236,11 @@ class CrewAIChatbot:
             ),
             # human_input=True
         )
-    def step_by_step_task(self, repair_or_renovation_process):
+    def guide_task(self, repair_or_renovation_process):
         return Task(
             description=f"Provide detailed step-by-step instructions for the following repair or renovation process: {repair_or_renovation_process}. "
                         f"Ensure that the steps are easy to follow and comprehensive, covering all necessary tools, materials, and safety precautions.",
-            agent=self.step_by_step_agent(),
+            agent=self.guide_agent(),
             expected_output=(
                 "A list of detailed steps for the repair or renovation process. For example:\n\n"
                 "1. Identify the scope of the repair or renovation.\n"
@@ -271,21 +271,21 @@ class CrewAIChatbot:
             guidance_task = self.provide_guidance_task(question, project_type)
             
             # Step 3: List materials
-            materials_task = self.list_materials_task(question)
+            materials_task = self.materials_task(question)
             
             # Step 4: List tools
-            tools_task = self.list_tools_task(question)
+            tools_task = self.tools_task(question)
             
             # Step 5: Cost estimation
             cost_task = self.cost_estimation_task(question)
 
             # Step 6: Step-by-step guidance
-            step_by_step_task = self.step_by_step_task(question)
+            guide_task = self.guide_task(question)
 
             # Create the main crew
             home_improvement_crew = Crew(
-                agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent, step_by_step_task.agent],
-                tasks=[guidance_task, materials_task, tools_task, cost_task, step_by_step_task],
+                agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent, guide_task.agent],
+                tasks=[guidance_task, materials_task, tools_task, cost_task, guide_task],
                 verbose=2
             )
             
