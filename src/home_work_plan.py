@@ -1,36 +1,85 @@
 from crewai import Agent, Task, Crew, Process
 from langchain_openai import ChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchRun
+from crewai_tools import ScrapeWebsiteTool
+from langchain_community.document_loaders import PyPDFLoader
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.tools import Tool
 import yaml
-from crewai_tools import FileReadTool, ScrapeWebsiteTool
-
-search_tool = DuckDuckGoSearchRun()
-scrape_tool = ScrapeWebsiteTool()
-file_read_tool = FileReadTool(root_dir="data/")
+import os
 
 class CrewAIChatbot:
     def __init__(self, credentials_path):
-        with open(credentials_path, "r") as stream:
-            credentials = yaml.safe_load(stream)
+        self.credentials = self.load_credentials(credentials_path)
+        self.llm = ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=self.credentials["OPENAI_API_KEY"])
+        self.search_tool = DuckDuckGoSearchRun()
+        self.scrape_tools = self.load_scrape_tools()
+        self.pdf_tools = self.load_pdf_tools()
+        self.all_tools = [self.search_tool] + self.scrape_tools + self.pdf_tools
         
-        self.openai_api_key = credentials["OPENAI_API_KEY"]
-        self.llm = ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=self.openai_api_key)
+    def load_credentials(self, path):
+        with open(path, "r") as stream:
+            return yaml.safe_load(stream)
 
-# AGENTS
-    def planificator(self):
+    def load_scrape_tools(self):
+        with open("data/sites/websites.yaml", "r") as file:
+            websites = yaml.safe_load(file)
+
+        scrape_tools = []
+        for resource in websites['resources']:
+            scrape_tools.append(ScrapeWebsiteTool(
+                website_url=resource['url'],
+                website_name=resource['name'],
+                website_description=resource['description']
+            ))
+        return scrape_tools
+
+    def load_pdf_tools(self):
+        pdf_tools = []
+        pdf_dir = "data/"
+        text_splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+        for filename in os.listdir(pdf_dir):
+            if filename.endswith(".pdf"):
+                pdf_path = os.path.join(pdf_dir, filename)
+                loader = PyPDFLoader(pdf_path)
+                documents = loader.load_and_split(text_splitter)
+                
+                # Limit the number of chunks to reduce token count
+                max_chunks = 5
+                limited_documents = documents[:max_chunks]
+                
+                pdf_tool = Tool(
+                    name=f"PDF_Reader_{filename}",
+                    func=lambda docs=limited_documents: "\n".join([doc.page_content for doc in docs]),
+                    description=f"Use this tool to read and extract information from the PDF file {filename}"
+                )
+                pdf_tools.append(pdf_tool)
+        return pdf_tools
+
+    ##------------------------------------AGENTS------------------------------------
+    def planificator_agent(self):
         return Agent(
             role='Project Classifier',
-            goal='Determine whether a home improvement project is a repair or renovation.',
-            tools=[search_tool],
+            goal='Classify whether a home improvement project is a repair or a renovation.',
+            tools=[self.search_tool],
             verbose=True,
             backstory=(
                 "You are an expert in classifying home improvement projects. "
+<<<<<<< HEAD
                 "Your role is to determine whether a project is a repair or a renovation based on its scope and complexity."
                 "Always use the Spanish language unless they tell you otherwise."
                 "Use 4 sentences maximum but keep the answer as concise as possible."
                 "Always say 'other question' in the specified language at the end of the answer."
                 "If it's not in the scope of repair or renovation then ask the quesiton 'No he entendido tu pregunta, pregunta de nuevo '"
                 "DO NOT ANSWER something inrelated to construction of houses"
+=======
+                "Your task is to determine if a project is a **repair** (fixing or restoring something damaged) "
+                "or a **renovation** (improving or modernizing an existing feature) based on its scope and complexity. "
+                "Always respond in Spanish unless otherwise indicated. "
+                "If you don't know the answer, just say you don't know, without making one up. "
+                "Use a maximum of one line per response to keep it concise. "
+                "Always end your response with 'another question?' in the specified language."
+>>>>>>> test-cambio-procesos
             ),
             llm=self.llm
         )
@@ -39,38 +88,53 @@ class CrewAIChatbot:
         return Agent(
             role='Repair Expert',
             goal='Provide detailed guidance on home repair projects.',
-            tools=[file_read_tool, scrape_tool, search_tool],
+            tools=[self.search_tool] +self.scrape_tools + self.pdf_tools,
             verbose=True,
             backstory=(
-                "You are a seasoned home repair expert. You provide comprehensive guidance on repair projects, "
-                "focusing on fixes and maintenance tasks that don't require significant structural changes."
-                "Always use the Spanish language unless they tell you otherwise."
-                "Use 4 sentences maximum but keep the answer as concise as possible."
-                "Always say 'other question' in the specified language at the end of the answer."
+                "You are an experienced expert in home repairs. "
+                "Your role is to provide clear and practical guidance on repair projects, "
+                "focusing on fixes and maintenance tasks that do not require major structural changes. "
+                "Always respond in Spanish unless otherwise indicated. "
+                "Use a maximum of four sentences to keep the response concise. "
+                "Always end your response with 'another question?' in the specified language."
             ),
             llm=self.llm
         )
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> test-cambio-procesos
     def renovation_agent(self):
         return Agent(
             role='Renovation Expert',
             goal='Provide detailed guidance on home renovation projects.',
-            tools=[file_read_tool, scrape_tool, search_tool],
+            tools=[self.search_tool] + self.pdf_tools,
             verbose=True,
             backstory=(
-                "You are an experienced home renovation expert. You offer in-depth advice on renovation projects, "
-                "especially those involving significant structural changes or additions to the home."
-                "Always use the Spanish language unless they tell you otherwise."
-                "Use 4 sentences maximum but keep the answer as concise as possible."
-                "Always say 'other question' in the specified language at the end of the answer."
+                "You are an experienced expert in home renovations. "
+                "Your role is to provide in-depth advice on renovation projects, "
+                "particularly those involving major structural changes or additions to the home. "
+                "Always respond in Spanish unless otherwise indicated. "
+                "Use a maximum of four sentences to keep the response concise. "
+                "Always end your response with 'another question?' in the specified language."
             ),
             llm=self.llm
         )
+<<<<<<< HEAD
+=======
+
+    
+>>>>>>> test-cambio-procesos
     def materials_agent(self):
         return Agent(
             role='Materials Expert',
             goal='Provide a detailed list of materials used for the job.',
+<<<<<<< HEAD
             tools=self.search_tool,
+=======
+            tools=[self.search_tool],
+>>>>>>> test-cambio-procesos
             verbose=True,
             backstory=(
                 "You are an experienced expert in construction. "
@@ -87,7 +151,11 @@ class CrewAIChatbot:
         return Agent(
             role='Tools Expert',
             goal='Provide a detailed list of tools used for the job.',
+<<<<<<< HEAD
             tools=[self.search_tool,self.pdf_tools],
+=======
+            tools=[self.search_tool] + self.pdf_tools,
+>>>>>>> test-cambio-procesos
             verbose=True,
             backstory=(
                 "You are an experienced expert in construction. "
@@ -104,7 +172,11 @@ class CrewAIChatbot:
         return Agent(
             role='Cost Determinator',
             goal='Based on the list of materials, provide a table with the costs.',
+<<<<<<< HEAD
             tools=self.search_tool,
+=======
+            tools=[self.search_tool],
+>>>>>>> test-cambio-procesos
             verbose=True,
             backstory=(
                 "You are a cost expert in construction. "
@@ -115,7 +187,11 @@ class CrewAIChatbot:
             ),
             llm=self.llm
         )
+<<<<<<< HEAD
     def step_by_step_agent(self):
+=======
+    def guide_agent(self):
+>>>>>>> test-cambio-procesos
         return Agent(
             role='Step-by-Step Guide',
             goal='Provide detailed step-by-step instructions for any task.',
@@ -129,27 +205,42 @@ class CrewAIChatbot:
             ),
             llm=self.llm
         )
+<<<<<<< HEAD
     
 # TASKS
     def classify_project_task(self, question):
         agent = self.planificator()
+=======
+
+
+##------------------------------------TASKS------------------------------------
+
+    def planificator_task(self, question):
+>>>>>>> test-cambio-procesos
         return Task(
-            description=f"Classify the following home improvement project: {question}",
-            agent=agent,
-            expected_output="Classification of the project as either 'repair' or 'renovation'."
+            description=f"Classify the following home improvement project: {question}. "
+                        f"You can use synonym pages to find keywords similar to renovation or repair.",
+            agent=self.planificator_agent(),
+            expected_output="Project classified as 'repair' or 'renovation'."
         )
 
     def provide_guidance_task(self, question, project_type):
         agent = self.repair_agent() if project_type == 'repair' else self.renovation_agent()
         return Task(
-            description=f"Provide detailed guidance for this {project_type} project: {question}",
+            description=f"Provide detailed guidance for this {project_type} project: {question}.",
             agent=agent,
             expected_output=(
-                "A comprehensive guide for the home improvement project, including step-by-step instructions, "
+                "A complete guide for the home improvement project, including step-by-step instructions, "
                 "required materials, estimated time and cost, and any safety precautions."
-            )
+            ),
+            # human_input=True
         )
+<<<<<<< HEAD
     def list_materials_task(self, project_description):
+=======
+
+    def materials_task(self, project_description):
+>>>>>>> test-cambio-procesos
         return Task(
             description=f"List the materials required for the following project: {project_description}. "
                         f"It should only contain the MATERIALS, DO NOT add the TOOLS"
@@ -162,7 +253,11 @@ class CrewAIChatbot:
             # human_input=True
         )
 
+<<<<<<< HEAD
     def list_tools_task(self, project_description):
+=======
+    def tools_task(self, project_description):
+>>>>>>> test-cambio-procesos
         return Task(
             description=f"List the tools required for the following project: {project_description}. "
                         f"It should only contain the TOOLS, DO NOT add the MATERIALS",
@@ -187,11 +282,19 @@ class CrewAIChatbot:
             ),
             # human_input=True
         )
+<<<<<<< HEAD
     def step_by_step_task(self, repair_or_renovation_process):
         return Task(
             description=f"Provide detailed step-by-step instructions for the following repair or renovation process: {repair_or_renovation_process}. "
                         f"Ensure that the steps are easy to follow and comprehensive, covering all necessary tools, materials, and safety precautions.",
             agent=self.step_by_step_agent(),
+=======
+    def guide_task(self, repair_or_renovation_process):
+        return Task(
+            description=f"Provide detailed step-by-step instructions for the following repair or renovation process: {repair_or_renovation_process}. "
+                        f"Ensure that the steps are easy to follow and comprehensive, covering all necessary tools, materials, and safety precautions.",
+            agent=self.guide_agent(),
+>>>>>>> test-cambio-procesos
             expected_output=(
                 "A list of detailed steps for the repair or renovation process. For example:\n\n"
                 "1. Identify the scope of the repair or renovation.\n"
@@ -202,29 +305,53 @@ class CrewAIChatbot:
             ),
             # human_input=True  # Uncomment if you want to enable human input
         )
+<<<<<<< HEAD
     
 # CREATE CREW
+=======
+
+
+    ##------------------------------------CREATE CREW------------------------------------
+
+>>>>>>> test-cambio-procesos
     def get_response(self, question):
         try:
-            # First, classify the project
-            classification_task = self.classify_project_task(question)
+            # Step 1: Classify the project
+            classification_task = self.planificator_task(question)
             classification_crew = Crew(
                 agents=[classification_task.agent],
                 tasks=[classification_task],
-                verbose=2
+                verbose=True
             )
-            project_type = classification_crew.kickoff()
+            result = classification_crew.kickoff()
+            project_type = 'repair' if 'repair' in result.lower() else 'renovation'
 
-            # Then, provide guidance based on the classification
+            # Step 2: Provide guidance
             guidance_task = self.provide_guidance_task(question, project_type)
-            guidance_crew = Crew(
-                agents=[guidance_task.agent],
-                tasks=[guidance_task],
+            
+            # Step 3: List materials
+            materials_task = self.materials_task(question)
+            
+            # Step 4: List tools
+            tools_task = self.tools_task(question)
+            
+            # Step 5: Cost estimation
+            cost_task = self.cost_estimation_task(question)
+
+            # Step 6: Step-by-step guidance
+            guide_task = self.guide_task(question)
+
+            # Create the main crew
+            home_improvement_crew = Crew(
+                agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent, guide_task.agent],
+                tasks=[guidance_task, materials_task, tools_task, cost_task, guide_task],
                 verbose=2
             )
-            result = guidance_crew.kickoff()
+            
+            result = home_improvement_crew.kickoff()
 
             return result
+        except AttributeError as e:
+            return f"Lo siento, parece que hay un problema con una de las herramientas o atributos: {str(e)}"
         except Exception as e:
-            print(f"An error occurred: {str(e)}")
-            return f"Lo siento he encontrado un error al buscar esta solucion: {str(e)}"
+            return f"Perdón, encontré un error al buscar una solución: {str(e)}"
