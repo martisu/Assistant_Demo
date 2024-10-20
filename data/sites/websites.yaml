@@ -1,0 +1,26 @@
+resources:
+  - name: "Family Handyman"
+    url: "https://www.familyhandyman.com/"
+    description: "DIY guides and tutorials for home repair and maintenance."
+
+  # - name: "This Old House"
+  #   url: "https://www.thisoldhouse.com/"
+  #   description: "Home repair tips, guides, and maintenance advice from experts."
+
+  # - name: "DIY Network"
+  #   url: "https://www.diynetwork.com/"
+  #   description: "How-to tutorials for fixing common household problems."
+
+  # - name: "Bob Vila"
+  #   url: "https://www.bobvila.com/"
+  #   description: "Step-by-step home repair guides and videos."
+
+  # - name: "The Spruce Repairs"
+  #   url: "https://www.thespruce.com/home-repair-4127996"
+  #   description: "Home repair advice for plumbing, electrical, and more."
+
+  # - name: "Home Depot Project Guides"
+  #   url: "https://www.homedepot.com/c/project_guides"
+  #   description: "DIY tutorials for home repairs and improvements."
+
+  
