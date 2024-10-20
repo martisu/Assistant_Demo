@@ -57,7 +57,7 @@ class CrewAIChatbot:
         return pdf_tools
 
     ##------------------------------------AGENTS------------------------------------
-    def planificator(self):
+    def planificator_agent(self):
         return Agent(
             role='Project Classifier',
             goal='Classify whether a home improvement project is a repair or a renovation.',
@@ -178,11 +178,11 @@ class CrewAIChatbot:
 
 ##------------------------------------TASKS------------------------------------
 
-    def classify_project_task(self, question):
+    def planificator_task(self, question):
         return Task(
             description=f"Classify the following home improvement project: {question}. "
                         f"You can use synonym pages to find keywords similar to renovation or repair.",
-            agent=self.planificator(),
+            agent=self.planificator_agent(),
             expected_output="Project classified as 'repair' or 'renovation'."
         )
 
@@ -258,7 +258,7 @@ class CrewAIChatbot:
     def get_response(self, question):
         try:
             # Step 1: Classify the project
-            classification_task = self.classify_project_task(question)
+            classification_task = self.planificator_task(question)
             classification_crew = Crew(
                 agents=[classification_task.agent],
                 tasks=[classification_task],
