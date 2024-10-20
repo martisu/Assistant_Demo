@@ -65,21 +65,12 @@ class CrewAIChatbot:
             verbose=True,
             backstory=(
                 "You are an expert in classifying home improvement projects. "
-<<<<<<< HEAD
-                "Your role is to determine whether a project is a repair or a renovation based on its scope and complexity."
-                "Always use the Spanish language unless they tell you otherwise."
-                "Use 4 sentences maximum but keep the answer as concise as possible."
-                "Always say 'other question' in the specified language at the end of the answer."
-                "If it's not in the scope of repair or renovation then ask the quesiton 'No he entendido tu pregunta, pregunta de nuevo '"
-                "DO NOT ANSWER something inrelated to construction of houses"
-=======
                 "Your task is to determine if a project is a **repair** (fixing or restoring something damaged) "
                 "or a **renovation** (improving or modernizing an existing feature) based on its scope and complexity. "
                 "Always respond in Spanish unless otherwise indicated. "
                 "If you don't know the answer, just say you don't know, without making one up. "
                 "Use a maximum of one line per response to keep it concise. "
                 "Always end your response with 'another question?' in the specified language."
->>>>>>> test-cambio-procesos
             ),
             llm=self.llm
         )
@@ -101,10 +92,6 @@ class CrewAIChatbot:
             llm=self.llm
         )
 
-<<<<<<< HEAD
-=======
-
->>>>>>> test-cambio-procesos
     def renovation_agent(self):
         return Agent(
             role='Renovation Expert',
@@ -121,20 +108,13 @@ class CrewAIChatbot:
             ),
             llm=self.llm
         )
-<<<<<<< HEAD
-=======
 
     
->>>>>>> test-cambio-procesos
     def materials_agent(self):
         return Agent(
             role='Materials Expert',
             goal='Provide a detailed list of materials used for the job.',
-<<<<<<< HEAD
-            tools=self.search_tool,
-=======
             tools=[self.search_tool],
->>>>>>> test-cambio-procesos
             verbose=True,
             backstory=(
                 "You are an experienced expert in construction. "
@@ -151,11 +131,7 @@ class CrewAIChatbot:
         return Agent(
             role='Tools Expert',
             goal='Provide a detailed list of tools used for the job.',
-<<<<<<< HEAD
-            tools=[self.search_tool,self.pdf_tools],
-=======
             tools=[self.search_tool] + self.pdf_tools,
->>>>>>> test-cambio-procesos
             verbose=True,
             backstory=(
                 "You are an experienced expert in construction. "
@@ -172,11 +148,7 @@ class CrewAIChatbot:
         return Agent(
             role='Cost Determinator',
             goal='Based on the list of materials, provide a table with the costs.',
-<<<<<<< HEAD
-            tools=self.search_tool,
-=======
             tools=[self.search_tool],
->>>>>>> test-cambio-procesos
             verbose=True,
             backstory=(
                 "You are a cost expert in construction. "
@@ -187,11 +159,7 @@ class CrewAIChatbot:
             ),
             llm=self.llm
         )
-<<<<<<< HEAD
-    def step_by_step_agent(self):
-=======
     def guide_agent(self):
->>>>>>> test-cambio-procesos
         return Agent(
             role='Step-by-Step Guide',
             goal='Provide detailed step-by-step instructions for any task.',
@@ -205,18 +173,11 @@ class CrewAIChatbot:
             ),
             llm=self.llm
         )
-<<<<<<< HEAD
-    
-# TASKS
-    def classify_project_task(self, question):
-        agent = self.planificator()
-=======
 
 
 ##------------------------------------TASKS------------------------------------
 
     def planificator_task(self, question):
->>>>>>> test-cambio-procesos
         return Task(
             description=f"Classify the following home improvement project: {question}. "
                         f"You can use synonym pages to find keywords similar to renovation or repair.",
@@ -235,12 +196,8 @@ class CrewAIChatbot:
             ),
             # human_input=True
         )
-<<<<<<< HEAD
-    def list_materials_task(self, project_description):
-=======
 
     def materials_task(self, project_description):
->>>>>>> test-cambio-procesos
         return Task(
             description=f"List the materials required for the following project: {project_description}. "
                         f"It should only contain the MATERIALS, DO NOT add the TOOLS"
@@ -253,11 +210,7 @@ class CrewAIChatbot:
             # human_input=True
         )
 
-<<<<<<< HEAD
-    def list_tools_task(self, project_description):
-=======
     def tools_task(self, project_description):
->>>>>>> test-cambio-procesos
         return Task(
             description=f"List the tools required for the following project: {project_description}. "
                         f"It should only contain the TOOLS, DO NOT add the MATERIALS",
@@ -282,19 +235,11 @@ class CrewAIChatbot:
             ),
             # human_input=True
         )
-<<<<<<< HEAD
-    def step_by_step_task(self, repair_or_renovation_process):
-        return Task(
-            description=f"Provide detailed step-by-step instructions for the following repair or renovation process: {repair_or_renovation_process}. "
-                        f"Ensure that the steps are easy to follow and comprehensive, covering all necessary tools, materials, and safety precautions.",
-            agent=self.step_by_step_agent(),
-=======
     def guide_task(self, repair_or_renovation_process):
         return Task(
             description=f"Provide detailed step-by-step instructions for the following repair or renovation process: {repair_or_renovation_process}. "
                         f"Ensure that the steps are easy to follow and comprehensive, covering all necessary tools, materials, and safety precautions.",
             agent=self.guide_agent(),
->>>>>>> test-cambio-procesos
             expected_output=(
                 "A list of detailed steps for the repair or renovation process. For example:\n\n"
                 "1. Identify the scope of the repair or renovation.\n"
@@ -305,15 +250,10 @@ class CrewAIChatbot:
             ),
             # human_input=True  # Uncomment if you want to enable human input
         )
-<<<<<<< HEAD
-    
-# CREATE CREW
-=======
 
 
     ##------------------------------------CREATE CREW------------------------------------
 
->>>>>>> test-cambio-procesos
     def get_response(self, question):
         try:
             # Step 1: Classify the project
