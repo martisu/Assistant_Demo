@@ -3,6 +3,7 @@ from langchain_openai import ChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchRun
 from crewai_tools import ScrapeWebsiteTool
 from langchain_community.document_loaders import PyPDFLoader
+from langchain.text_splitter import CharacterTextSplitter
 from langchain.tools import Tool
 import yaml
 import os
@@ -14,7 +15,8 @@ class CrewAIChatbot:
         self.search_tool = DuckDuckGoSearchRun()
         self.scrape_tools = self.load_scrape_tools()
         self.pdf_tools = self.load_pdf_tools()
-
+        self.all_tools = [self.search_tool] + self.scrape_tools + self.pdf_tools
+        
     def load_credentials(self, path):
         with open(path, "r") as stream:
             return yaml.safe_load(stream)
@@ -35,17 +37,25 @@ class CrewAIChatbot:
     def load_pdf_tools(self):
         pdf_tools = []
         pdf_dir = "data/"
+        text_splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
         for filename in os.listdir(pdf_dir):
             if filename.endswith(".pdf"):
                 pdf_path = os.path.join(pdf_dir, filename)
                 loader = PyPDFLoader(pdf_path)
+                documents = loader.load_and_split(text_splitter)
+                
+                # Limit the number of chunks to reduce token count
+                max_chunks = 5
+                limited_documents = documents[:max_chunks]
+                
                 pdf_tool = Tool(
                     name=f"PDF_Reader_{filename}",
-                    func=loader.load,
+                    func=lambda docs=limited_documents: "\n".join([doc.page_content for doc in docs]),
                     description=f"Use this tool to read and extract information from the PDF file {filename}"
                 )
                 pdf_tools.append(pdf_tool)
         return pdf_tools
+
     ##------------------------------------AGENTS------------------------------------
     def planificator(self):
         return Agent(
@@ -122,7 +132,7 @@ class CrewAIChatbot:
         return Agent(
             role='Tools Expert',
             goal='Provide a detailed list of tools used for the job.',
-            tools=[self.search_tool,self.pdf_tools],
+            tools=[self.search_tool] + self.pdf_tools,
             verbose=True,
             backstory=(
                 "You are an experienced expert in construction. "
@@ -267,14 +277,14 @@ class CrewAIChatbot:
             tools_task = self.list_tools_task(question)
             
             # Step 5: Cost estimation
-            cost_task = self.cost_estimation_task(question)  # Changed to use the question directly
+            cost_task = self.cost_estimation_task(question)
 
             # Step 6: Step-by-step guidance
             step_by_step_task = self.step_by_step_task(question)
 
             # Create the main crew
             home_improvement_crew = Crew(
-                agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent, self.step_by_step_agent()],
+                agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent, step_by_step_task.agent],
                 tasks=[guidance_task, materials_task, tools_task, cost_task, step_by_step_task],
                 verbose=2
             )
