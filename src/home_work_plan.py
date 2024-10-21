@@ -16,6 +16,15 @@ class CrewAIChatbot:
         self.scrape_tools = self.load_scrape_tools()
         self.pdf_tools = self.load_pdf_tools()
         self.all_tools = [self.search_tool] + self.scrape_tools + self.pdf_tools
+        self.context = {
+            'current_project': None,
+            'project_type': None,
+            'materials': [],
+            'tools': [],
+            'cost_estimation': None,
+            'step_by_step_guide': None,
+            'conversation_history': []
+        }
         
     def load_credentials(self, path):
         with open(path, "r") as stream:
@@ -57,20 +66,50 @@ class CrewAIChatbot:
         return pdf_tools
 
     ##------------------------------------AGENTS------------------------------------
+    def relevance_checker_agent(self):
+        return Agent(
+            role='Relevance Checker and Redirector',
+            goal='Determine if a query is related to home improvement projects and provide a helpful response.',
+            tools=[self.search_tool],
+            verbose=True,
+            backstory=(
+                "You are an expert in home improvement projects with excellent communication skills. "
+                "Your task is to determine if a question is about home repairs, renovations, or any other home improvement task. "
+                "If the input is not related, gently redirect the conversation back to home improvement. "
+                "Always respond in the language of the user. "
+                "Provide a friendly explanation and suggest a related home improvement topic if possible."
+            ),
+            llm=self.llm
+        )
+    
+    def clarification_agent(self):
+        return Agent(
+            role='Clarification Expert',
+            goal='Ask for clarification on ambiguous home improvement projects.',
+            tools=[self.search_tool],
+            verbose=True,
+            backstory=(
+                "You are an expert in home improvement projects with excellent communication skills. "
+                "Your task is to ask for clarification when it's not clear if a project is a repair or a renovation. "
+                "Always respond in the language of the user. "
+                "Provide a friendly explanation of why you need more information and suggest some questions that could help clarify the nature of the project."
+            ),
+            llm=self.llm
+        )
+
     def planificator_agent(self):
         return Agent(
             role='Project Classifier',
-            goal='Classify whether a home improvement project is a repair or a renovation.',
+            goal='Classify whether a home improvement project is a repair, a renovation, or undefined.',
             tools=[self.search_tool],
             verbose=True,
             backstory=(
                 "You are an expert in classifying home improvement projects. "
-                "Your task is to determine if a project is a **repair** (fixing or restoring something damaged) "
-                "or a **renovation** (improving or modernizing an existing feature) based on its scope and complexity. "
-                "Always respond in Spanish unless otherwise indicated. "
-                "If you don't know the answer, just say you don't know, without making one up. "
-                "Use a maximum of one line per response to keep it concise. "
-                "Always end your response with 'another question?' in the specified language."
+                "Your task is to determine if a project is a **repair** (fixing or restoring something damaged), "
+                "a **renovation** (improving or modernizing an existing feature), or **undefined** if it's not clear. "
+                "Always respond in the language of the user unless otherwise indicated. "
+                "If you can't determine the type, classify it as 'undefined'. "
+                "Use a maximum of one line per response to keep it concise."
             ),
             llm=self.llm
         )
@@ -85,7 +124,7 @@ class CrewAIChatbot:
                 "You are an experienced expert in home repairs. "
                 "Your role is to provide clear and practical guidance on repair projects, "
                 "focusing on fixes and maintenance tasks that do not require major structural changes. "
-                "Always respond in Spanish unless otherwise indicated. "
+                "Always respond in the language of the user unless otherwise indicated. "
                 "Use a maximum of four sentences to keep the response concise. "
                 "Always end your response with 'another question?' in the specified language."
             ),
@@ -103,7 +142,7 @@ class CrewAIChatbot:
                 "You are an experienced expert in home renovations. "
                 "Your role is to provide in-depth advice on renovation projects, "
                 "particularly those involving major structural changes or additions to the home. "
-                "Always respond in Spanish unless otherwise indicated. "
+                "Always respond in the language of the user unless otherwise indicated. "
                 "Use a maximum of four sentences to keep the response concise. "
                 "Always end your response with 'another question?' in the specified language."
             ),
@@ -121,7 +160,7 @@ class CrewAIChatbot:
                 "You are an experienced expert in construction. "
                 "Your role is to provide detailed advice on materials used for various projects. "
                 "Create a list using markdown that includes the materials and their alternatives. "
-                "Always respond in Spanish unless otherwise indicated. "
+                "Always respond in language of the user unless otherwise indicated. "
                 "Use a maximum of four sentences to keep the response concise."
             ),
             llm=self.llm
@@ -138,7 +177,7 @@ class CrewAIChatbot:
                 "You are an experienced expert in construction. "
                 "Your role is to provide detailed advice on tools required for various tasks. "
                 "Create a list using markdown that includes the tools and their alternatives. "
-                "Always respond in Spanish unless otherwise indicated. "
+                "Always respond in language of the user unless otherwise indicated. "
                 "Use a maximum of four sentences to keep the response concise."
             ),
             llm=self.llm
@@ -155,7 +194,7 @@ class CrewAIChatbot:
                 "You are a cost expert in construction. "
                 "Your role is to provide detailed cost estimations for materials used. "
                 "Create a list using markdown that includes the costs of each material and their alternatives. "
-                "Always respond in Spanish unless otherwise indicated. "
+                "Always respond in the language of the user unless otherwise indicated. "
                 "Use a maximum of four sentences to keep the response concise."
             ),
             llm=self.llm
@@ -170,7 +209,7 @@ class CrewAIChatbot:
                 "You are an expert guide. Your role is to break down complex tasks into clear, manageable steps."
                 "Always ensure the instructions are simple and precise, adjusting based on the user's feedback."
                 "Provide explanations for each step, but keep them concise."
-                "Respond in Spanish unless otherwise indicated."
+                "Respond in the language of the user unless otherwise indicated."
             ),
             llm=self.llm
         )
@@ -178,12 +217,51 @@ class CrewAIChatbot:
 
 ##------------------------------------TASKS------------------------------------
 
+    def check_relevance_task(self, question):
+        recent_history = self.context['conversation_history'][-5:]
+        history_str = "\n".join([f"{entry['role']}: {entry['content']}" for entry in recent_history])
+
+        return Task(
+            description=(
+                f"Considering the following recent conversation history:\n\n{history_str}\n\n"
+                f"Analyze if the following query is related to home improvement projects: {question}\n"
+                f"If it's related, respond with 'RELATED: ' followed by a brief confirmation.\n"
+                f"If it's not related, respond with 'NOT RELATED: ' followed by a friendly message that:\n"
+                f"1. Acknowledges the user's question\n"
+                f"2. Gently reminds them that you're specialized in home improvement\n"
+                f"3. Suggests a related home improvement topic they might be interested in\n"
+                f"Ensure your response is in the same language as the user's query."
+            ),
+            agent=self.relevance_checker_agent(),
+            expected_output="A decision of 'RELATED: ' or 'NOT RELATED: ' followed by an appropriate response."
+        )
+    
+    def clarification_task(self, question):
+        recent_history = self.context['conversation_history'][-5:]
+        history_str = "\n".join([f"{entry['role']}: {entry['content']}" for entry in recent_history])
+
+        return Task(
+            description=(
+                f"Based on the following conversation history and the current question, "
+                f"ask for clarification about whether the project is a repair or a renovation:\n\n"
+                f"History: {history_str}\n\n"
+                f"Current question: {question}\n\n"
+                f"Provide a response that:\n"
+                f"1. Acknowledges the user's project\n"
+                f"2. Explains why you need more information\n"
+                f"3. Asks specific questions to determine if it's a repair or renovation\n"
+                f"Ensure your response is in the same language as the user's query."
+            ),
+            agent=self.clarification_agent(),
+            expected_output="A friendly message asking for clarification about the nature of the project."
+        )
+
     def planificator_task(self, question):
         return Task(
             description=f"Classify the following home improvement project: {question}. "
-                        f"You can use synonym pages to find keywords similar to renovation or repair.",
+                        f"Determine if it's a repair, renovation, or if it's unclear (undefined).",
             agent=self.planificator_agent(),
-            expected_output="Project classified as 'repair' or 'renovation'."
+            expected_output="Project classified as 'repair', 'renovation', or 'undefined'."
         )
 
     def provide_guidance_task(self, question, project_type):
@@ -257,41 +335,70 @@ class CrewAIChatbot:
 
     def get_response(self, question):
         try:
-            # Step 1: Classify the project
-            classification_task = self.planificator_task(question)
-            classification_crew = Crew(
-                agents=[classification_task.agent],
-                tasks=[classification_task],
+            self.context['conversation_history'].append({"role": "user", "content": question})
+
+            # Step 0: Check relevance
+            relevance_task = self.check_relevance_task(question)
+            relevance_crew = Crew(
+                agents=[relevance_task.agent],
+                tasks=[relevance_task],
                 verbose=True
             )
-            result = classification_crew.kickoff()
-            project_type = 'repair' if 'repair' in result.lower() else 'renovation'
+            relevance_result = relevance_crew.kickoff()
 
-            # Step 2: Provide guidance
-            guidance_task = self.provide_guidance_task(question, project_type)
-            
-            # Step 3: List materials
-            materials_task = self.materials_task(question)
-            
-            # Step 4: List tools
-            tools_task = self.tools_task(question)
-            
-            # Step 5: Cost estimation
-            cost_task = self.cost_estimation_task(question)
+            if relevance_result.lower().startswith('not related:'):
+                result = relevance_result.split(':', 1)[1].strip() 
+            else:
+                # Step 1: Classify the project (only if not already defined)
+                if self.context['project_type'] is None or self.context['project_type'] == 'undefined':
+                    classification_task = self.planificator_task(question)
+                    classification_crew = Crew(
+                        agents=[classification_task.agent],
+                        tasks=[classification_task],
+                        verbose=True
+                    )
+                    classification_result = classification_crew.kickoff()
+                    
+                    if 'undefined' in classification_result.lower():
+                        # Use the clarification agent to ask for more details
+                        clarification_task = self.clarification_task(question)
+                        clarification_crew = Crew(
+                            agents=[clarification_task.agent],
+                            tasks=[clarification_task],
+                            verbose=True
+                        )
+                        result = clarification_crew.kickoff()
 
-            # Step 6: Step-by-step guidance
-            guide_task = self.guide_task(question)
+                    else:
+                        self.context['project_type'] = 'repair' if 'repair' in classification_result.lower() else 'renovation'
 
-            # Create the main crew
-            home_improvement_crew = Crew(
-                agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent, guide_task.agent],
-                tasks=[guidance_task, materials_task, tools_task, cost_task, guide_task],
-                verbose=2
-            )
-            
-            result = home_improvement_crew.kickoff()
+                        # Step 2: Provide guidance
+                        guidance_task = self.provide_guidance_task(question, self.context['project_type'])
+                        
+                        # Step 3: List materials
+                        materials_task = self.materials_task(question)
+                        
+                        # Step 4: List tools
+                        tools_task = self.tools_task(question)
+                        
+                        # Step 5: Cost estimation
+                        cost_task = self.cost_estimation_task(question)
+
+                        # Step 6: Step-by-step guidance
+                        guide_task = self.guide_task(question)
+
+                        # Create the main crew
+                        home_improvement_crew = Crew(
+                            agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent, guide_task.agent],
+                            tasks=[guidance_task, materials_task, tools_task, cost_task, guide_task],
+                            verbose=2
+                        )            
+                        result = home_improvement_crew.kickoff()
+
+            self.context['conversation_history'].append({"role": "assistant", "content": result})
 
             return result
+        
         except AttributeError as e:
             return f"Lo siento, parece que hay un problema con una de las herramientas o atributos: {str(e)}"
         except Exception as e:
