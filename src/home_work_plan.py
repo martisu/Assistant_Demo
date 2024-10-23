@@ -194,7 +194,7 @@ class CrewAIChatbot:
                 "A complete guide for the home improvement project, including step-by-step instructions, "
                 "required materials, estimated time and cost, and any safety precautions."
             ),
-            # human_input=True
+            human_input=True
         )
 
     def materials_task(self, project_description):
@@ -207,7 +207,6 @@ class CrewAIChatbot:
                 "A markdown list of materials and their alternatives, e.g.,:\n\n"
                 "- **Material 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
             ),
-            # human_input=True
         )
 
     def tools_task(self, project_description):
@@ -219,7 +218,6 @@ class CrewAIChatbot:
                 "A markdown list of tools and their alternatives, e.g.,:\n\n"
                 "- **Tool 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
             ),
-            # human_input=True
         )
 
     def cost_estimation_task(self, materials_list):
@@ -233,7 +231,6 @@ class CrewAIChatbot:
                 "|----------------|-------|----------------------------|\n"
                 "| Material 1     | $10   | Alternative 1 ($8), Alt 2 ($12) |\n"
             ),
-            # human_input=True
         )
     def guide_task(self, repair_or_renovation_process):
         return Task(
@@ -285,7 +282,8 @@ class CrewAIChatbot:
             home_improvement_crew = Crew(
                 agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent, guide_task.agent],
                 tasks=[guidance_task, materials_task, tools_task, cost_task, guide_task],
-                verbose=2
+                verbose=True,
+                memory = True
             )
             
             result = home_improvement_crew.kickoff()
