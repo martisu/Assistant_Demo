@@ -79,7 +79,8 @@ class CrewAIChatbot:
         return Agent(
             role='Repair Expert',
             goal='Provide detailed guidance on home repair projects.',
-            tools=[self.search_tool] +self.scrape_tools + self.pdf_tools,
+            # tools=[self.search_tool] +self.scrape_tools + self.pdf_tools,
+            tools=[self.search_tool] ,
             verbose=True,
             backstory=(
                 "You are an experienced expert in home repairs. "
@@ -96,7 +97,8 @@ class CrewAIChatbot:
         return Agent(
             role='Renovation Expert',
             goal='Provide detailed guidance on home renovation projects.',
-            tools=[self.search_tool] + self.pdf_tools,
+            # tools=[self.search_tool] + self.pdf_tools,
+            tools=[self.search_tool] ,
             verbose=True,
             backstory=(
                 "You are an experienced expert in home renovations. "
@@ -131,7 +133,8 @@ class CrewAIChatbot:
         return Agent(
             role='Tools Expert',
             goal='Provide a detailed list of tools used for the job.',
-            tools=[self.search_tool] + self.pdf_tools,
+            # tools=[self.search_tool] + self.pdf_tools,
+            tools=[self.search_tool] ,
             verbose=True,
             backstory=(
                 "You are an experienced expert in construction. "
@@ -163,7 +166,8 @@ class CrewAIChatbot:
         return Agent(
             role='Step-by-Step Guide',
             goal='Provide detailed step-by-step instructions for any task.',
-            tools=[self.search_tool] + self.pdf_tools,
+            # tools=[self.search_tool] + self.pdf_tools,
+            tools=[self.search_tool],
             verbose=True,
             backstory=(
                 "You are an expert guide. Your role is to break down complex tasks into clear, manageable steps."
@@ -186,7 +190,7 @@ class CrewAIChatbot:
             human_input=True
 
         )
-
+    
     def provide_guidance_task(self, question, project_type):
         agent = self.repair_agent() if project_type == 'repair' else self.renovation_agent()
         return Task(
@@ -259,7 +263,9 @@ class CrewAIChatbot:
             classification_crew = Crew(
                 agents=[classification_task.agent],
                 tasks=[classification_task],
-                verbose=True
+                verbose=True,
+                planning = True,
+                memory = True
             )
             result = classification_crew.kickoff()
             project_type = 'repair' if 'repair' in result.lower() else 'renovation'
@@ -284,6 +290,7 @@ class CrewAIChatbot:
                 agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent, guide_task.agent],
                 tasks=[guidance_task, materials_task, tools_task, cost_task, guide_task],
                 verbose=True,
+                planning = True,
                 memory = True
             )
             
