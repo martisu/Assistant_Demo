@@ -182,7 +182,9 @@ class CrewAIChatbot:
             description=f"Classify the following home improvement project: {question}. "
                         f"You can use synonym pages to find keywords similar to renovation or repair.",
             agent=self.planificator_agent(),
-            expected_output="Project classified as 'repair' or 'renovation'."
+            expected_output="Project classified as 'repair' or 'renovation'.",
+            human_input=True
+
         )
 
     def provide_guidance_task(self, question, project_type):
@@ -206,7 +208,7 @@ class CrewAIChatbot:
             expected_output=(
                 "A markdown list of materials and their alternatives, e.g.,:\n\n"
                 "- **Material 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
-            ),
+            )
         )
 
     def tools_task(self, project_description):
@@ -217,7 +219,7 @@ class CrewAIChatbot:
             expected_output=(
                 "A markdown list of tools and their alternatives, e.g.,:\n\n"
                 "- **Tool 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
-            ),
+            )
         )
 
     def cost_estimation_task(self, materials_list):
@@ -230,7 +232,7 @@ class CrewAIChatbot:
                 "| Material        | Cost  | Alternatives               |\n"
                 "|----------------|-------|----------------------------|\n"
                 "| Material 1     | $10   | Alternative 1 ($8), Alt 2 ($12) |\n"
-            ),
+            )
         )
     def guide_task(self, repair_or_renovation_process):
         return Task(
@@ -244,8 +246,7 @@ class CrewAIChatbot:
                 "3. Prepare the work area to ensure safety and efficiency.\n"
                 "4. Step-by-step breakdown of the actual work (e.g., removing old materials, installing new ones).\n"
                 "5. Final touches and clean-up instructions.\n"
-            ),
-            # human_input=True  # Uncomment if you want to enable human input
+            )
         )
 
 
