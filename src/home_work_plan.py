@@ -13,48 +13,48 @@ class CrewAIChatbot:
         self.credentials = self.load_credentials(credentials_path)
         self.llm = ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=self.credentials["OPENAI_API_KEY"])
         self.search_tool = DuckDuckGoSearchRun()
-        self.scrape_tools = self.load_scrape_tools()
-        self.pdf_tools = self.load_pdf_tools()
-        self.all_tools = [self.search_tool] + self.scrape_tools + self.pdf_tools
+        # self.scrape_tools = self.load_scrape_tools()
+        # self.pdf_tools = self.load_pdf_tools()
+        # self.all_tools = [self.search_tool] + self.scrape_tools + self.pdf_tools
         
     def load_credentials(self, path):
         with open(path, "r") as stream:
             return yaml.safe_load(stream)
 
-    def load_scrape_tools(self):
-        with open("data/sites/websites.yaml", "r") as file:
-            websites = yaml.safe_load(file)
+    # def load_scrape_tools(self):
+    #     with open("data/sites/websites.yaml", "r") as file:
+    #         websites = yaml.safe_load(file)
 
-        scrape_tools = []
-        for resource in websites['resources']:
-            scrape_tools.append(ScrapeWebsiteTool(
-                website_url=resource['url'],
-                website_name=resource['name'],
-                website_description=resource['description']
-            ))
-        return scrape_tools
+    #     scrape_tools = []
+    #     for resource in websites['resources']:
+    #         scrape_tools.append(ScrapeWebsiteTool(
+    #             website_url=resource['url'],
+    #             website_name=resource['name'],
+    #             website_description=resource['description']
+    #         ))
+    #     return scrape_tools
 
-    def load_pdf_tools(self):
-        pdf_tools = []
-        pdf_dir = "data/"
-        text_splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-        for filename in os.listdir(pdf_dir):
-            if filename.endswith(".pdf"):
-                pdf_path = os.path.join(pdf_dir, filename)
-                loader = PyPDFLoader(pdf_path)
-                documents = loader.load_and_split(text_splitter)
+    # def load_pdf_tools(self):
+    #     pdf_tools = []
+    #     pdf_dir = "data/"
+    #     text_splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    #     for filename in os.listdir(pdf_dir):
+    #         if filename.endswith(".pdf"):
+    #             pdf_path = os.path.join(pdf_dir, filename)
+    #             loader = PyPDFLoader(pdf_path)
+    #             documents = loader.load_and_split(text_splitter)
                 
-                # Limit the number of chunks to reduce token count
-                max_chunks = 5
-                limited_documents = documents[:max_chunks]
+    #             # Limit the number of chunks to reduce token count
+    #             max_chunks = 5
+    #             limited_documents = documents[:max_chunks]
                 
-                pdf_tool = Tool(
-                    name=f"PDF_Reader_{filename}",
-                    func=lambda docs=limited_documents: "\n".join([doc.page_content for doc in docs]),
-                    description=f"Use this tool to read and extract information from the PDF file {filename}"
-                )
-                pdf_tools.append(pdf_tool)
-        return pdf_tools
+    #             pdf_tool = Tool(
+    #                 name=f"PDF_Reader_{filename}",
+    #                 func=lambda docs=limited_documents: "\n".join([doc.page_content for doc in docs]),
+    #                 description=f"Use this tool to read and extract information from the PDF file {filename}"
+    #             )
+    #             pdf_tools.append(pdf_tool)
+    #     return pdf_tools
 
     ##------------------------------------AGENTS------------------------------------
     def planificator_agent(self):
@@ -186,7 +186,8 @@ class CrewAIChatbot:
             description=f"Classify the following home improvement project: {question}. "
                         f"You can use synonym pages to find keywords similar to renovation or repair.",
             agent=self.planificator_agent(),
-            expected_output="Project classified as 'repair' or 'renovation'.",
+            expected_output="Project classified as 'repair' or 'renovation'."
+            ,
             human_input=True
 
         )
@@ -199,7 +200,8 @@ class CrewAIChatbot:
             expected_output=(
                 "A complete guide for the home improvement project, including step-by-step instructions, "
                 "required materials, estimated time and cost, and any safety precautions."
-            ),
+            )
+            ,
             human_input=True
         )
 
@@ -263,7 +265,7 @@ class CrewAIChatbot:
             classification_crew = Crew(
                 agents=[classification_task.agent],
                 tasks=[classification_task],
-                verbose=True,
+                verbose=True
                 planning = True,
                 memory = True
             )
@@ -289,9 +291,7 @@ class CrewAIChatbot:
             home_improvement_crew = Crew(
                 agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent, guide_task.agent],
                 tasks=[guidance_task, materials_task, tools_task, cost_task, guide_task],
-                verbose=True,
-                planning = True,
-                memory = True
+                verbose=True
             )
             
             result = home_improvement_crew.kickoff()
