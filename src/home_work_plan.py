@@ -265,7 +265,7 @@ class CrewAIChatbot:
             classification_crew = Crew(
                 agents=[classification_task.agent],
                 tasks=[classification_task],
-                verbose=True
+                verbose=True,
                 planning = True,
                 memory = True
             )
@@ -291,7 +291,9 @@ class CrewAIChatbot:
             home_improvement_crew = Crew(
                 agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent, guide_task.agent],
                 tasks=[guidance_task, materials_task, tools_task, cost_task, guide_task],
-                verbose=True
+                verbose=True,
+                planning = True,
+                memory = True
             )
             
             result = home_improvement_crew.kickoff()
