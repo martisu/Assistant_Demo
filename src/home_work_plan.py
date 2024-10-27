@@ -69,6 +69,10 @@ class CrewAIChatbot:
         return pdf_tools
 
     ##------------------------------------AGENTS------------------------------------
+
+    def image_agent(self):
+        return
+
     def relevance_checker_agent(self):
         return Agent(
             role='Relevance Checker and Redirector',
@@ -101,6 +105,24 @@ class CrewAIChatbot:
             ),
             llm=self.llm
         )
+    
+    def image_description_agent(self):
+        return Agent(
+            role='Damage Identifier',
+            goal='Identify and describe any visible damage or areas requiring repair in an uploaded image related to home improvement projects.',
+            tools=[self.image_recognition_tool],
+            verbose=True,
+            backstory=(
+                "You are an expert in analyzing images of home interiors and exteriors for damage or repair needs. "
+                "Your task is to examine the provided image and identify any parts that appear damaged, worn, or in need of repair. "
+                "Generate a concise, clear description of the identified issues, including the location (e.g., ceiling, wall) and nature "
+                "of the damage (e.g., cracks, water stains, loose tiles). Always respond in the language of the user unless otherwise indicated. "
+                "If you cannot detect any visible damage, simply respond with 'No visible damage detected'. "
+                "Use one to two sentences for each description to ensure clarity and brevity."
+            ),
+            llm=self.llm
+        )
+
 
     def repair_agent(self):
         return Agent(
@@ -222,7 +244,22 @@ class CrewAIChatbot:
             agent=self.relevance_checker_agent(),
             expected_output="A decision of 'RELATED: ' or 'NOT RELATED: ' followed by an appropriate response."
         )
-    
+    def image_description_task(self, image):
+        return Task(
+            description=(
+                "Examine the provided image and generate a detailed description of any visible damage or areas requiring repair. "
+                "The description should include the specific location (e.g., ceiling, wall) and nature of the damage (e.g., cracks, water stains, loose tiles). "
+                "If no damage is detected, respond with 'No visible damage detected'."
+            ),
+            agent=self.image_description_agent(),
+            input=image,
+            expected_output=(
+                "A concise description of the damaged areas or issues in the image, e.g.,:\n\n"
+                "- 'The ceiling shows water stains and cracks, likely due to leakage.'\n"
+                "- 'Several tiles on the floor are loose and may need replacement.'"
+            )
+        )
+
 
     def planificator_task(self, question):
         return Task(
