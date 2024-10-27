@@ -82,20 +82,6 @@ class CrewAIChatbot:
             llm=self.llm
         )
     
-    def clarification_agent(self):
-        return Agent(
-            role='Clarification Expert',
-            goal='Ask for clarification on ambiguous home improvement projects.',
-            tools=[self.search_tool],
-            verbose=True,
-            backstory=(
-                "You are an expert in home improvement projects with excellent communication skills. "
-                "Your task is to ask for clarification when it's not clear if a project is a repair or a renovation. "
-                "Always respond in the language of the user. "
-                "Provide a friendly explanation of why you need more information and suggest some questions that could help clarify the nature of the project."
-            ),
-            llm=self.llm
-        )
 
     def planificator_agent(self):
         return Agent(
@@ -235,25 +221,6 @@ class CrewAIChatbot:
             expected_output="A decision of 'RELATED: ' or 'NOT RELATED: ' followed by an appropriate response."
         )
     
-    def clarification_task(self, question):
-        recent_history = self.context['conversation_history'][-5:]
-        history_str = "\n".join([f"{entry['role']}: {entry['content']}" for entry in recent_history])
-
-        return Task(
-            description=(
-                f"Based on the following conversation history and the current question, "
-                f"ask for clarification about whether the project is a repair or a renovation:\n\n"
-                f"History: {history_str}\n\n"
-                f"Current question: {question}\n\n"
-                f"Provide a response that:\n"
-                f"1. Acknowledges the user's project\n"
-                f"2. Explains why you need more information\n"
-                f"3. Asks specific questions to determine if it's a repair or renovation\n"
-                f"Ensure your response is in the same language as the user's query."
-            ),
-            agent=self.clarification_agent(),
-            expected_output="A friendly message asking for clarification about the nature of the project."
-        )
 
     def planificator_task(self, question):
         return Task(
@@ -263,17 +230,26 @@ class CrewAIChatbot:
             expected_output="Project classified as 'repair', 'renovation', or 'undefined'."
         )
 
-    def provide_guidance_task(self, question, project_type):
+    def gather_all_information(self, question, project_type):
         agent = self.repair_agent() if project_type == 'repair' else self.renovation_agent()
         return Task(
-            description=f"Provide detailed guidance for this {project_type} project: {question}.",
+            description=(
+                f"Assemble a comprehensive guide for this {project_type} project based on the user question: '{question}'. "
+                f"Ensure the guidance covers each aspect in detail, making it user-friendly and actionable."
+            ),
             agent=agent,
             expected_output=(
-                "A complete guide for the home improvement project, including step-by-step instructions, "
-                "required materials, estimated time and cost, and any safety precautions."
+                "An all-inclusive project guide featuring: "
+                "- Clear, step-by-step instructions from preparation to completion.\n"
+                "- A list of all materials and tools required, specifying quantities and alternatives if needed.\n"
+                "- Estimated project timeline with stages, highlighting potential delays or complex steps.\n"
+                "- A breakdown of costs, including material, tools, and any recommended professional help.\n"
+                "- Essential safety tips and precautions tailored to the project type.\n"
+                "- Optional recommendations for design, quality assurance tips, and environmentally friendly practices."
             ),
             # human_input=True
-        )
+    )
+
 
     def materials_task(self, project_description):
         return Task(
@@ -358,41 +334,39 @@ class CrewAIChatbot:
                     )
                     classification_result = classification_crew.kickoff()
                     
-                    if 'undefined' in classification_result.lower():
-                        # Use the clarification agent to ask for more details
-                        clarification_task = self.clarification_task(question)
-                        clarification_crew = Crew(
-                            agents=[clarification_task.agent],
-                            tasks=[clarification_task],
-                            verbose=True
-                        )
-                        result = clarification_crew.kickoff()
+                    self.context['project_type'] = 'repair' if 'repair' in classification_result.lower() else 'renovation'
 
-                    else:
-                        self.context['project_type'] = 'repair' if 'repair' in classification_result.lower() else 'renovation'
+                    # Step 2: Provide guidance
+                    guidance_task = self.gather_all_information(question, self.context['project_type'])
+                    
+                    # Step 3: List materials
+                    materials_task = self.materials_task(question)
+                    
+                    # Step 4: List tools
+                    tools_task = self.tools_task(question)
+                    
+                    # Step 5: Cost estimation
+                    cost_task = self.cost_estimation_task(question)
 
-                        # Step 2: Provide guidance
-                        guidance_task = self.provide_guidance_task(question, self.context['project_type'])
-                        
-                        # Step 3: List materials
-                        materials_task = self.materials_task(question)
-                        
-                        # Step 4: List tools
-                        tools_task = self.tools_task(question)
-                        
-                        # Step 5: Cost estimation
-                        cost_task = self.cost_estimation_task(question)
+                    # Step 6: Step-by-step guidance
+                    guide_task = self.guide_task(question)
 
-                        # Step 6: Step-by-step guidance
-                        guide_task = self.guide_task(question)
+                    # Create the main crew
+                    home_improvement_crew = Crew(
+                        agents=[guidance_task.agent, 
+                                materials_task.agent, 
+                                tools_task.agent, 
+                                cost_task.agent, 
+                                guide_task.agent],
 
-                        # Create the main crew
-                        home_improvement_crew = Crew(
-                            agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent, guide_task.agent],
-                            tasks=[guidance_task, materials_task, tools_task, cost_task, guide_task],
-                            verbose=2
-                        )            
-                        result = home_improvement_crew.kickoff()
+                        tasks=[guidance_task, 
+                               materials_task, 
+                               tools_task, 
+                               cost_task, 
+                               guide_task],
+                        verbose=2
+                    )            
+                    result = home_improvement_crew.kickoff()
 
             self.context['conversation_history'].append({"role": "assistant", "content": result})
 
