@@ -246,8 +246,7 @@ class CrewAIChatbot:
                 "- A breakdown of costs, including material, tools, and any recommended professional help.\n"
                 "- Essential safety tips and precautions tailored to the project type.\n"
                 "- Optional recommendations for design, quality assurance tips, and environmentally friendly practices."
-            ),
-            # human_input=True
+            )
     )
 
 
@@ -260,9 +259,8 @@ class CrewAIChatbot:
             expected_output=(
                 "A markdown list of materials and their alternatives, e.g.,:\n\n"
                 "- **Material 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
-            ),
-            # human_input=True
-        )
+            )
+    )
 
     def tools_task(self, project_description):
         return Task(
@@ -272,9 +270,8 @@ class CrewAIChatbot:
             expected_output=(
                 "A markdown list of tools and their alternatives, e.g.,:\n\n"
                 "- **Tool 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
-            ),
-            # human_input=True
-        )
+            )
+    )
 
     def cost_estimation_task(self, materials_list):
         return Task(
@@ -286,8 +283,7 @@ class CrewAIChatbot:
                 "| Material        | Cost  | Alternatives               |\n"
                 "|----------------|-------|----------------------------|\n"
                 "| Material 1     | $10   | Alternative 1 ($8), Alt 2 ($12) |\n"
-            ),
-            # human_input=True
+            )
         )
     def guide_task(self, repair_or_renovation_process):
         return Task(
@@ -301,8 +297,7 @@ class CrewAIChatbot:
                 "3. Prepare the work area to ensure safety and efficiency.\n"
                 "4. Step-by-step breakdown of the actual work (e.g., removing old materials, installing new ones).\n"
                 "5. Final touches and clean-up instructions.\n"
-            ),
-            # human_input=True  # Uncomment if you want to enable human input
+            )
         )
 
 
@@ -337,7 +332,7 @@ class CrewAIChatbot:
                     self.context['project_type'] = 'repair' if 'repair' in classification_result.lower() else 'renovation'
 
                     # Step 2: Provide guidance
-                    guidance_task = self.gather_all_information(question, self.context['project_type'])
+                    gather_info = self.gather_all_information(question, self.context['project_type'])
                     
                     # Step 3: List materials
                     materials_task = self.materials_task(question)
@@ -353,13 +348,13 @@ class CrewAIChatbot:
 
                     # Create the main crew
                     home_improvement_crew = Crew(
-                        agents=[guidance_task.agent, 
+                        agents=[gather_info.agent, 
                                 materials_task.agent, 
                                 tools_task.agent, 
                                 cost_task.agent, 
                                 guide_task.agent],
 
-                        tasks=[guidance_task, 
+                        tasks=[gather_info, 
                                materials_task, 
                                tools_task, 
                                cost_task, 
