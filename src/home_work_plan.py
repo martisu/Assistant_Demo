@@ -222,6 +222,23 @@ class CrewAIChatbot:
             ),
             llm=self.llm
         )
+    
+    def safety_agent(self):
+        return Agent(
+            role='Safety-Focused Task Guide',
+            goal='Provide step-by-step instructions for tasks in a way that maximizes safety and minimizes the risk of accidents.',
+            tools=[self.search_tool] + self.pdf_tools,
+            verbose=True,
+            backstory=(
+                "You are a safety-focused expert responsible for guiding users through tasks with an emphasis on preventing accidents. "
+                "Your role is to identify potential hazards and offer specific, precautionary steps to ensure safety. "
+                "For each task, outline the required safety measures, such as protective gear, safety checks, or any specific warnings. "
+                "Provide clear, detailed instructions, making sure to emphasize steps where caution is required. "
+                "Respond in the language of the user unless otherwise specified, and adapt instructions based on the context and task complexity."
+            ),
+            llm=self.llm
+        )
+
 
 
 ##------------------------------------TASKS------------------------------------
@@ -336,6 +353,23 @@ class CrewAIChatbot:
                 "3. Prepare the work area to ensure safety and efficiency.\n"
                 "4. Step-by-step breakdown of the actual work (e.g., removing old materials, installing new ones).\n"
                 "5. Final touches and clean-up instructions.\n"
+            )
+        )
+
+    def safety_task(self, task_description):
+        return Task(
+            description=(
+                f"Provide a careful, safety-focused guide for the following task: {task_description}. "
+                f"The instructions should prioritize accident prevention by outlining each step in detail, highlighting any safety risks, "
+                f"and suggesting appropriate protective measures or precautions. Emphasize where extra caution is needed."
+            ),
+            agent=self.safety_agent(),
+            expected_output=(
+                "A step-by-step safety guide with specific cautions, e.g.,:\n\n"
+                "- **Step 1**: Identify the area where you will work and clear any obstacles.\n"
+                "  - **Safety Tip**: Ensure the floor is dry to avoid slips.\n"
+                "- **Step 2**: Gather necessary materials and wear protective gloves.\n"
+                "  - **Safety Tip**: Use gloves rated for chemical handling if using cleaning agents.\n"
             )
         )
 
