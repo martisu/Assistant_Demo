@@ -13,9 +13,9 @@ class CrewAIChatbot:
         self.credentials = self.load_credentials(credentials_path)
         self.llm = ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=self.credentials["OPENAI_API_KEY"])
         self.search_tool = DuckDuckGoSearchRun()
-        self.scrape_tools = self.load_scrape_tools()
+        # self.scrape_tools = self.load_scrape_tools()
         self.pdf_tools = self.load_pdf_tools()
-        self.all_tools = [self.search_tool] + self.scrape_tools + self.pdf_tools
+        # self.all_tools = [self.search_tool] + self.scrape_tools + self.pdf_tools
         self.context = {
             'current_project': None,
             'project_type': None,
@@ -30,18 +30,21 @@ class CrewAIChatbot:
         with open(path, "r") as stream:
             return yaml.safe_load(stream)
 
-    def load_scrape_tools(self):
-        with open("data/sites/websites.yaml", "r") as file:
-            websites = yaml.safe_load(file)
+    def load_scrape_tools(self, source_type):
+        """Load scraping tools based on the specified source type (either 'websites' or 'tools')."""
+        file_path = f"data/sites/{source_type}.yaml"
+        with open(file_path, "r") as file:
+            resources = yaml.safe_load(file)
 
         scrape_tools = []
-        for resource in websites['resources']:
+        for resource in resources['resources']:
             scrape_tools.append(ScrapeWebsiteTool(
                 website_url=resource['url'],
                 website_name=resource['name'],
                 website_description=resource['description']
             ))
         return scrape_tools
+
 
     def load_pdf_tools(self):
         pdf_tools = []
@@ -81,7 +84,6 @@ class CrewAIChatbot:
             ),
             llm=self.llm
         )
-    
 
     def planificator_agent(self):
         return Agent(
@@ -104,7 +106,7 @@ class CrewAIChatbot:
         return Agent(
             role='Repair Expert',
             goal='Provide detailed guidance on home repair projects.',
-            tools=[self.search_tool] +self.scrape_tools + self.pdf_tools,
+            tools=[self.search_tool] + self.load_scrape_tools("websites") + self.pdf_tools,
             verbose=True,
             backstory=(
                 "You are an experienced expert in home repairs. "
@@ -155,15 +157,15 @@ class CrewAIChatbot:
     def tools_agent(self):
         return Agent(
             role='Tools Expert',
-            goal='Provide a detailed list of tools used for the job.',
-            tools=[self.search_tool] + self.pdf_tools,
+            goal='Based on the task context, provide a specific list of tools needed for the job.',
+            tools=[self.search_tool] + self.load_scrape_tools("tools") + self.pdf_tools,
             verbose=True,
             backstory=(
-                "You are an experienced expert in construction. "
-                "Your role is to provide detailed advice on tools required for various tasks. "
-                "Create a list using markdown that includes the tools and their alternatives. "
-                "Always respond in language of the user unless otherwise indicated. "
-                "Use a maximum of four sentences to keep the response concise."
+            "You are an expert in selecting the right tools for specific construction tasks. "
+            "You have access to a comprehensive list of tools scraped from reliable sources. "
+            "Using the task context provided, filter and select only the tools required for the specific job. "
+            "Exclude any materials or unrelated items. Provide the list in markdown format, "
+            "including alternatives if available. Respond concisely in the language of the user."
             ),
             llm=self.llm
         )
@@ -247,7 +249,7 @@ class CrewAIChatbot:
                 "- Essential safety tips and precautions tailored to the project type.\n"
                 "- Optional recommendations for design, quality assurance tips, and environmentally friendly practices."
             )
-    )
+        )
 
 
     def materials_task(self, project_description):
@@ -272,7 +274,7 @@ class CrewAIChatbot:
                 "- **Tool 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
             )
     )
-
+ 
     def cost_estimation_task(self, materials_list):
         return Task(
             description=f"Provide a detailed cost estimation for the following materials: {materials_list}. "
