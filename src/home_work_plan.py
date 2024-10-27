@@ -11,18 +11,21 @@ import os
 class CrewAIChatbot:
     def __init__(self, credentials_path):
         self.credentials = self.load_credentials(credentials_path)
-        self.llm = ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=self.credentials["OPENAI_API_KEY"])
+        self.llm = ChatOpenAI(model_name="gpt-4", openai_api_key=self.credentials["OPENAI_API_KEY"])
+#        self.llm = ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=self.credentials["OPENAI_API_KEY"])
         self.search_tool = DuckDuckGoSearchRun()
         self.scrape_tools = self.load_scrape_tools()
         self.pdf_tools = self.load_pdf_tools()
         self.all_tools = [self.search_tool] + self.scrape_tools + self.pdf_tools
         self.context = {
+            'guidance': None,
             'current_project': None,
             'project_type': None,
             'materials': [],
             'tools': [],
             'cost_estimation': None,
             'step_by_step_guide': None,
+            'contractors': [],
             'conversation_history': []
         }
         
@@ -213,6 +216,22 @@ class CrewAIChatbot:
             ),
             llm=self.llm
         )
+    
+    def contractor_search_agent(self):
+        return Agent(
+            role='Contractor Finder',
+            goal='Search for contractors who can handle home improvement projects and provide contact details or links for budget estimation.',
+            tools=[self.search_tool, *self.scrape_tools],
+            verbose=True,
+            backstory=(
+                "You are an expert in finding reliable contractors for home improvement projects. "
+                "Your role is to find contractors based on the user’s project description, preferably near their location. "
+                "Search for relevant contractor listings, company websites, and review aggregators, and provide contact details or links where they can request a budget. "
+                "Always respond in the language of the user unless otherwise indicated."
+            ),
+            llm=self.llm
+        )
+
 
 
 ##------------------------------------TASKS------------------------------------
@@ -264,10 +283,10 @@ class CrewAIChatbot:
             expected_output="Project classified as 'repair', 'renovation', or 'undefined'."
         )
 
-    def provide_guidance_task(self, question, project_type):
-        agent = self.repair_agent() if project_type == 'repair' else self.renovation_agent()
+    def provide_guidance_task(self, question):
+        agent = self.repair_agent() if self.context['project_type'] == 'repair' else self.renovation_agent()
         return Task(
-            description=f"Provide detailed guidance for this {project_type} project: {question}.",
+            description=f"Provide detailed guidance for this {self.context['project_type']} project: {question}.",
             agent=agent,
             expected_output=(
                 "A complete guide for the home improvement project, including step-by-step instructions, "
@@ -330,6 +349,20 @@ class CrewAIChatbot:
             # human_input=True  # Uncomment if you want to enable human input
         )
 
+    def contractor_search_task(self, project_description):
+        return Task(
+            description=(
+                f"Search for contractors who specialize in the following project in the spedificated location: {project_description}. "
+                f"Provide contact details or links where the user can request a budget estimation. "
+                f"Ensure the contractors are well-reviewed or reputable, if possible."
+            ),
+            agent=self.contractor_search_agent(),
+            expected_output=(
+                "A list of contractors with their contact information or website links, including details on how to request a budget."
+            )
+            # human_input=True
+        )
+
 
     ##------------------------------------CREATE CREW------------------------------------
 
@@ -349,6 +382,7 @@ class CrewAIChatbot:
             if relevance_result.lower().startswith('not related:'):
                 result = relevance_result.split(':', 1)[1].strip() 
             else:
+
                 # Step 1: Classify the project (only if not already defined)
                 if self.context['project_type'] is None or self.context['project_type'] == 'undefined':
                     classification_task = self.planificator_task(question)
@@ -357,9 +391,10 @@ class CrewAIChatbot:
                         tasks=[classification_task],
                         verbose=True
                     )
-                    classification_result = classification_crew.kickoff()
-                    
-                    if 'undefined' in classification_result.lower():
+                    self.context['project_type'] = classification_crew.kickoff()
+
+                    if 'undefined' in self.context['project_type'].lower():
+
                         # Use the clarification agent to ask for more details
                         clarification_task = self.clarification_task(question)
                         clarification_crew = Crew(
@@ -367,33 +402,58 @@ class CrewAIChatbot:
                             tasks=[clarification_task],
                             verbose=True
                         )
+
                         result = clarification_crew.kickoff()
 
                     else:
-                        self.context['project_type'] = 'repair' if 'repair' in classification_result.lower() else 'renovation'
+
+                        self.context['project_type'] = 'repair' if 'repair' in self.context['project_type'].lower() else 'renovation'
 
                         # Step 2: Provide guidance
-                        guidance_task = self.provide_guidance_task(question, self.context['project_type'])
-                        
+                        guidance_task = self.provide_guidance_task(question)
+                        guidance_crew = Crew(agents=[guidance_task.agent], tasks=[guidance_task], verbose=True)
+                        self.context['guidance'] = guidance_crew.kickoff()
+
                         # Step 3: List materials
                         materials_task = self.materials_task(question)
-                        
+                        materials_crew = Crew(agents=[materials_task.agent], tasks=[materials_task], verbose=True)
+                        self.context['materials'] = materials_crew.kickoff()
+
                         # Step 4: List tools
                         tools_task = self.tools_task(question)
-                        
+                        tools_crew = Crew(agents=[tools_task.agent], tasks=[tools_task], verbose=True)
+                        self.context['tools'] = tools_crew.kickoff()
+
                         # Step 5: Cost estimation
                         cost_task = self.cost_estimation_task(question)
+                        cost_crew = Crew(agents=[cost_task.agent], tasks=[cost_task], verbose=True)
+                        self.context['cost_estimation'] = cost_crew.kickoff()
 
                         # Step 6: Step-by-step guidance
                         guide_task = self.guide_task(question)
+                        guide_crew = Crew(agents=[guide_task.agent], tasks=[guide_task], verbose=True)
+                        self.context['step_by_step_guide'] = guide_crew.kickoff()
+
+                        # Step 7: Contractor search
+                        contractor_task = self.contractor_search_task(question) 
+                        contractor_crew = Crew(agents=[contractor_task.agent], tasks=[contractor_task], verbose=True)
+                        self.context['contractors'] = contractor_crew.kickoff()
 
                         # Create the main crew
-                        home_improvement_crew = Crew(
-                            agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent, guide_task.agent],
-                            tasks=[guidance_task, materials_task, tools_task, cost_task, guide_task],
-                            verbose=2
-                        )            
-                        result = home_improvement_crew.kickoff()
+#                        home_improvement_crew = Crew(
+#                            agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent, guide_task.agent,contractor_task.agent],
+#                            tasks=[guidance_task, materials_task, tools_task, cost_task, guide_task, contractor_task],
+#                            verbose=2
+#                        )            
+#                        result = home_improvement_crew.kickoff()
+                        result = (
+                            f"**Project Guidance:**\n{self.context['guidance']}\n\n"
+                            f"**Required Materials:**\n{self.context['materials']}\n\n"
+                            f"**Required Tools:**\n{self.context['tools']}\n\n"
+                            f"**Cost Estimation:**\n{self.context['cost_estimation']}\n\n"
+                            f"**Step-by-Step Guide:**\n{self.context['step_by_step_guide']}\n\n"
+                            f"**Recommended Contractors:**\n{self.context['contractors']}"
+                        )
 
             self.context['conversation_history'].append({"role": "assistant", "content": result})
 
