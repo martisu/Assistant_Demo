@@ -13,9 +13,9 @@ class CrewAIChatbot:
         self.credentials = self.load_credentials(credentials_path)
         self.llm = ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=self.credentials["OPENAI_API_KEY"])
         self.search_tool = DuckDuckGoSearchRun()
-        self.scrape_tools = self.load_scrape_tools()
+        # self.scrape_tools = self.load_scrape_tools()
         self.pdf_tools = self.load_pdf_tools()
-        self.all_tools = [self.search_tool] + self.scrape_tools + self.pdf_tools
+        # self.all_tools = [self.search_tool] + self.scrape_tools + self.pdf_tools
         self.context = {
             'current_project': None,
             'project_type': None,
@@ -30,18 +30,21 @@ class CrewAIChatbot:
         with open(path, "r") as stream:
             return yaml.safe_load(stream)
 
-    def load_scrape_tools(self):
-        with open("data/sites/websites.yaml", "r") as file:
-            websites = yaml.safe_load(file)
+    def load_scrape_tools(self, source_type):
+        """Load scraping tools based on the specified source type (either 'websites' or 'tools')."""
+        file_path = f"data/sites/{source_type}.yaml"
+        with open(file_path, "r") as file:
+            resources = yaml.safe_load(file)
 
         scrape_tools = []
-        for resource in websites['resources']:
+        for resource in resources['resources']:
             scrape_tools.append(ScrapeWebsiteTool(
                 website_url=resource['url'],
                 website_name=resource['name'],
                 website_description=resource['description']
             ))
         return scrape_tools
+
 
     def load_pdf_tools(self):
         pdf_tools = []
@@ -66,6 +69,10 @@ class CrewAIChatbot:
         return pdf_tools
 
     ##------------------------------------AGENTS------------------------------------
+
+    def image_agent(self):
+        return
+
     def relevance_checker_agent(self):
         return Agent(
             role='Relevance Checker and Redirector',
@@ -78,21 +85,6 @@ class CrewAIChatbot:
                 "If the input is not related, gently redirect the conversation back to home improvement. "
                 "Always respond in the language of the user. "
                 "Provide a friendly explanation and suggest a related home improvement topic if possible."
-            ),
-            llm=self.llm
-        )
-    
-    def clarification_agent(self):
-        return Agent(
-            role='Clarification Expert',
-            goal='Ask for clarification on ambiguous home improvement projects.',
-            tools=[self.search_tool],
-            verbose=True,
-            backstory=(
-                "You are an expert in home improvement projects with excellent communication skills. "
-                "Your task is to ask for clarification when it's not clear if a project is a repair or a renovation. "
-                "Always respond in the language of the user. "
-                "Provide a friendly explanation of why you need more information and suggest some questions that could help clarify the nature of the project."
             ),
             llm=self.llm
         )
@@ -113,12 +105,30 @@ class CrewAIChatbot:
             ),
             llm=self.llm
         )
+    
+    def image_description_agent(self):
+        return Agent(
+            role='Damage Identifier',
+            goal='Identify and describe any visible damage or areas requiring repair in an uploaded image related to home improvement projects.',
+            tools=[self.image_recognition_tool],
+            verbose=True,
+            backstory=(
+                "You are an expert in analyzing images of home interiors and exteriors for damage or repair needs. "
+                "Your task is to examine the provided image and identify any parts that appear damaged, worn, or in need of repair. "
+                "Generate a concise, clear description of the identified issues, including the location (e.g., ceiling, wall) and nature "
+                "of the damage (e.g., cracks, water stains, loose tiles). Always respond in the language of the user unless otherwise indicated. "
+                "If you cannot detect any visible damage, simply respond with 'No visible damage detected'. "
+                "Use one to two sentences for each description to ensure clarity and brevity."
+            ),
+            llm=self.llm
+        )
+
 
     def repair_agent(self):
         return Agent(
             role='Repair Expert',
             goal='Provide detailed guidance on home repair projects.',
-            tools=[self.search_tool] +self.scrape_tools + self.pdf_tools,
+            tools=[self.search_tool] + self.load_scrape_tools("websites") + self.pdf_tools,
             verbose=True,
             backstory=(
                 "You are an experienced expert in home repairs. "
@@ -169,15 +179,15 @@ class CrewAIChatbot:
     def tools_agent(self):
         return Agent(
             role='Tools Expert',
-            goal='Provide a detailed list of tools used for the job.',
-            tools=[self.search_tool] + self.pdf_tools,
+            goal='Based on the task context, provide a specific list of tools needed for the job.',
+            tools=[self.search_tool]  + self.pdf_tools,
             verbose=True,
             backstory=(
-                "You are an experienced expert in construction. "
-                "Your role is to provide detailed advice on tools required for various tasks. "
-                "Create a list using markdown that includes the tools and their alternatives. "
-                "Always respond in language of the user unless otherwise indicated. "
-                "Use a maximum of four sentences to keep the response concise."
+            "You are an expert in selecting the right tools for specific construction tasks. "
+            "You have access to a comprehensive list of tools scraped from reliable sources. "
+            "Using the task context provided, filter and select only the tools required for the specific job. "
+            "Exclude any materials or unrelated items. Provide the list in markdown format, "
+            "including alternatives if available. Respond concisely in the language of the user."
             ),
             llm=self.llm
         )
@@ -212,6 +222,23 @@ class CrewAIChatbot:
             ),
             llm=self.llm
         )
+    
+    def safety_agent(self):
+        return Agent(
+            role='Safety-Focused Task Guide',
+            goal='Provide step-by-step instructions for tasks in a way that maximizes safety and minimizes the risk of accidents.',
+            tools=[self.search_tool] + self.pdf_tools,
+            verbose=True,
+            backstory=(
+                "You are a safety-focused expert responsible for guiding users through tasks with an emphasis on preventing accidents. "
+                "Your role is to identify potential hazards and offer specific, precautionary steps to ensure safety. "
+                "For each task, outline the required safety measures, such as protective gear, safety checks, or any specific warnings. "
+                "Provide clear, detailed instructions, making sure to emphasize steps where caution is required. "
+                "Respond in the language of the user unless otherwise specified, and adapt instructions based on the context and task complexity."
+            ),
+            llm=self.llm
+        )
+
 
 
 ##------------------------------------TASKS------------------------------------
@@ -234,26 +261,22 @@ class CrewAIChatbot:
             agent=self.relevance_checker_agent(),
             expected_output="A decision of 'RELATED: ' or 'NOT RELATED: ' followed by an appropriate response."
         )
-    
-    def clarification_task(self, question):
-        recent_history = self.context['conversation_history'][-5:]
-        history_str = "\n".join([f"{entry['role']}: {entry['content']}" for entry in recent_history])
-
+    def image_description_task(self, image):
         return Task(
             description=(
-                f"Based on the following conversation history and the current question, "
-                f"ask for clarification about whether the project is a repair or a renovation:\n\n"
-                f"History: {history_str}\n\n"
-                f"Current question: {question}\n\n"
-                f"Provide a response that:\n"
-                f"1. Acknowledges the user's project\n"
-                f"2. Explains why you need more information\n"
-                f"3. Asks specific questions to determine if it's a repair or renovation\n"
-                f"Ensure your response is in the same language as the user's query."
+                "Examine the provided image and generate a detailed description of any visible damage or areas requiring repair. "
+                "The description should include the specific location (e.g., ceiling, wall) and nature of the damage (e.g., cracks, water stains, loose tiles). "
+                "If no damage is detected, respond with 'No visible damage detected'."
             ),
-            agent=self.clarification_agent(),
-            expected_output="A friendly message asking for clarification about the nature of the project."
+            agent=self.image_description_agent(),
+            input=image,
+            expected_output=(
+                "A concise description of the damaged areas or issues in the image, e.g.,:\n\n"
+                "- 'The ceiling shows water stains and cracks, likely due to leakage.'\n"
+                "- 'Several tiles on the floor are loose and may need replacement.'"
+            )
         )
+
 
     def planificator_task(self, question):
         return Task(
@@ -263,17 +286,25 @@ class CrewAIChatbot:
             expected_output="Project classified as 'repair', 'renovation', or 'undefined'."
         )
 
-    def provide_guidance_task(self, question, project_type):
+    def gather_all_information(self, question, project_type):
         agent = self.repair_agent() if project_type == 'repair' else self.renovation_agent()
         return Task(
-            description=f"Provide detailed guidance for this {project_type} project: {question}.",
+            description=(
+                f"Assemble a comprehensive guide for this {project_type} project based on the user question: '{question}'. "
+                f"Ensure the guidance covers each aspect in detail, making it user-friendly and actionable."
+            ),
             agent=agent,
             expected_output=(
-                "A complete guide for the home improvement project, including step-by-step instructions, "
-                "required materials, estimated time and cost, and any safety precautions."
-            ),
-            # human_input=True
+                "An all-inclusive project guide featuring: "
+                "- Clear, step-by-step instructions from preparation to completion.\n"
+                "- A list of all materials and tools required, specifying quantities and alternatives if needed.\n"
+                "- Estimated project timeline with stages, highlighting potential delays or complex steps.\n"
+                "- A breakdown of costs, including material, tools, and any recommended professional help.\n"
+                "- Essential safety tips and precautions tailored to the project type.\n"
+                "- Optional recommendations for design, quality assurance tips, and environmentally friendly practices."
+            )
         )
+
 
     def materials_task(self, project_description):
         return Task(
@@ -284,9 +315,8 @@ class CrewAIChatbot:
             expected_output=(
                 "A markdown list of materials and their alternatives, e.g.,:\n\n"
                 "- **Material 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
-            ),
-            # human_input=True
-        )
+            )
+    )
 
     def tools_task(self, project_description):
         return Task(
@@ -296,10 +326,9 @@ class CrewAIChatbot:
             expected_output=(
                 "A markdown list of tools and their alternatives, e.g.,:\n\n"
                 "- **Tool 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
-            ),
-            # human_input=True
-        )
-
+            )
+    )
+ 
     def cost_estimation_task(self, materials_list):
         return Task(
             description=f"Provide a detailed cost estimation for the following materials: {materials_list}. "
@@ -310,8 +339,7 @@ class CrewAIChatbot:
                 "| Material        | Cost  | Alternatives               |\n"
                 "|----------------|-------|----------------------------|\n"
                 "| Material 1     | $10   | Alternative 1 ($8), Alt 2 ($12) |\n"
-            ),
-            # human_input=True
+            )
         )
     def guide_task(self, repair_or_renovation_process):
         return Task(
@@ -325,8 +353,24 @@ class CrewAIChatbot:
                 "3. Prepare the work area to ensure safety and efficiency.\n"
                 "4. Step-by-step breakdown of the actual work (e.g., removing old materials, installing new ones).\n"
                 "5. Final touches and clean-up instructions.\n"
+            )
+        )
+
+    def safety_task(self, task_description):
+        return Task(
+            description=(
+                f"Provide a careful, safety-focused guide for the following task: {task_description}. "
+                f"The instructions should prioritize accident prevention by outlining each step in detail, highlighting any safety risks, "
+                f"and suggesting appropriate protective measures or precautions. Emphasize where extra caution is needed."
             ),
-            # human_input=True  # Uncomment if you want to enable human input
+            agent=self.safety_agent(),
+            expected_output=(
+                "A step-by-step safety guide with specific cautions, e.g.,:\n\n"
+                "- **Step 1**: Identify the area where you will work and clear any obstacles.\n"
+                "  - **Safety Tip**: Ensure the floor is dry to avoid slips.\n"
+                "- **Step 2**: Gather necessary materials and wear protective gloves.\n"
+                "  - **Safety Tip**: Use gloves rated for chemical handling if using cleaning agents.\n"
+            )
         )
 
 
@@ -358,41 +402,39 @@ class CrewAIChatbot:
                     )
                     classification_result = classification_crew.kickoff()
                     
-                    if 'undefined' in classification_result.lower():
-                        # Use the clarification agent to ask for more details
-                        clarification_task = self.clarification_task(question)
-                        clarification_crew = Crew(
-                            agents=[clarification_task.agent],
-                            tasks=[clarification_task],
-                            verbose=True
-                        )
-                        result = clarification_crew.kickoff()
+                    self.context['project_type'] = 'repair' if 'repair' in classification_result.lower() else 'renovation'
 
-                    else:
-                        self.context['project_type'] = 'repair' if 'repair' in classification_result.lower() else 'renovation'
+                    # Step 2: Provide guidance
+                    gather_info = self.gather_all_information(question, self.context['project_type'])
+                    
+                    # Step 3: List materials
+                    materials_task = self.materials_task(question)
+                    
+                    # Step 4: List tools
+                    tools_task = self.tools_task(question)
+                    
+                    # Step 5: Cost estimation
+                    cost_task = self.cost_estimation_task(question)
 
-                        # Step 2: Provide guidance
-                        guidance_task = self.provide_guidance_task(question, self.context['project_type'])
-                        
-                        # Step 3: List materials
-                        materials_task = self.materials_task(question)
-                        
-                        # Step 4: List tools
-                        tools_task = self.tools_task(question)
-                        
-                        # Step 5: Cost estimation
-                        cost_task = self.cost_estimation_task(question)
+                    # Step 6: Step-by-step guidance
+                    guide_task = self.guide_task(question)
 
-                        # Step 6: Step-by-step guidance
-                        guide_task = self.guide_task(question)
+                    # Create the main crew
+                    home_improvement_crew = Crew(
+                        agents=[gather_info.agent, 
+                                materials_task.agent, 
+                                tools_task.agent, 
+                                cost_task.agent, 
+                                guide_task.agent],
 
-                        # Create the main crew
-                        home_improvement_crew = Crew(
-                            agents=[guidance_task.agent, materials_task.agent, tools_task.agent, cost_task.agent, guide_task.agent],
-                            tasks=[guidance_task, materials_task, tools_task, cost_task, guide_task],
-                            verbose=2
-                        )            
-                        result = home_improvement_crew.kickoff()
+                        tasks=[gather_info, 
+                               materials_task, 
+                               tools_task, 
+                               cost_task, 
+                               guide_task],
+                        verbose=2
+                    )            
+                    result = home_improvement_crew.kickoff()
 
             self.context['conversation_history'].append({"role": "assistant", "content": result})
 
