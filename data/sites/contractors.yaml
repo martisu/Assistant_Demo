@@ -1,0 +1,12 @@
+resources:
+  - name: "contractors"
+    url: "https://engdic.org/a-to-z-tools-name-list/"
+    description: "Tools list"
+    - name: "contractors"
+    url: "https://engdic.org/a-to-z-tools-name-list/"
+    description: "Tools list"
+    - name: "contractors"
+    url: "https://engdic.org/a-to-z-tools-name-list/"
+    description: "Tools list"
+
+  

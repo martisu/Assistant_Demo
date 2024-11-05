@@ -11,7 +11,7 @@ import os
 class CrewAIChatbot:
     def __init__(self, credentials_path):
         self.credentials = self.load_credentials(credentials_path)
-        self.llm = ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=self.credentials["OPENAI_API_KEY"])
+        self.llm = ChatOpenAI(model_name="gpt-4o", openai_api_key=self.credentials["OPENAI_API_KEY"])
         self.search_tool = DuckDuckGoSearchRun()
 #        self.scrape_tools = self.load_scrape_tools()
         self.pdf_tools = self.load_pdf_tools()
@@ -102,7 +102,7 @@ class CrewAIChatbot:
                 "You are an expert in classifying home improvement projects. "
                 "Your task is to determine if a project is a **repair** (fixing or restoring something damaged), "
                 "a **renovation** (improving or modernizing an existing feature), or **undefined** if it's not clear. "
-                "Always respond in the language of the user unless otherwise indicated. "
+                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
                 "If you can't determine the type, classify it as 'undefined'. "
                 "Use a maximum of one line per response to keep it concise."
             ),
@@ -119,7 +119,8 @@ class CrewAIChatbot:
                 "You are an expert in analyzing images of home interiors and exteriors for damage or repair needs. "
                 "Your task is to examine the provided image and identify any parts that appear damaged, worn, or in need of repair. "
                 "Generate a concise, clear description of the identified issues, including the location (e.g., ceiling, wall) and nature "
-                "of the damage (e.g., cracks, water stains, loose tiles). Always respond in the language of the user unless otherwise indicated. "
+                "of the damage (e.g., cracks, water stains, loose tiles)."
+                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
                 "If you cannot detect any visible damage, simply respond with 'No visible damage detected'. "
                 "Use one to two sentences for each description to ensure clarity and brevity."
             ),
@@ -137,7 +138,7 @@ class CrewAIChatbot:
                 "You are an experienced expert in home repairs. "
                 "Your role is to provide clear and practical guidance on repair projects, "
                 "focusing on fixes and maintenance tasks that do not require major structural changes. "
-                "Always respond in the language of the user unless otherwise indicated. "
+                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
                 "Use a maximum of four sentences to keep the response concise. "
                 "Always end your response with 'another question?' in the specified language."
             ),
@@ -154,7 +155,7 @@ class CrewAIChatbot:
                 "You are an experienced expert in home renovations. "
                 "Your role is to provide in-depth advice on renovation projects, "
                 "particularly those involving major structural changes or additions to the home. "
-                "Always respond in the language of the user unless otherwise indicated. "
+                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
                 "Use a maximum of four sentences to keep the response concise. "
                 "Always end your response with 'another question?' in the specified language."
             ),
@@ -172,7 +173,7 @@ class CrewAIChatbot:
                 "You are an experienced expert in construction. "
                 "Your role is to provide detailed advice on materials used for various projects. "
                 "Create a list using markdown that includes the materials and their alternatives. "
-                "Always respond in language of the user unless otherwise indicated. "
+                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
                 "Use a maximum of four sentences to keep the response concise."
             ),
             llm=self.llm
@@ -183,14 +184,15 @@ class CrewAIChatbot:
         return Agent(
             role='Tools Expert',
             goal='Based on the task context, provide a specific list of tools needed for the job.',
-            tools=[self.search_tool]  + self.pdf_tools,
+            tools=[self.search_tool] + self.pdf_tools,
             verbose=True,
             backstory=(
             "You are an expert in selecting the right tools for specific construction tasks. "
             "You have access to a comprehensive list of tools scraped from reliable sources. "
             "Using the task context provided, filter and select only the tools required for the specific job. "
             "Exclude any materials or unrelated items. Provide the list in markdown format, "
-            "including alternatives if available. Respond concisely in the language of the user."
+            "including alternatives if available. "
+            "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
             ),
             llm=self.llm
         )
@@ -206,8 +208,9 @@ class CrewAIChatbot:
                 "You are a cost expert in construction. "
                 "Your role is to provide detailed cost estimations for materials used. "
                 "Create a list using markdown that includes the costs of each material and their alternatives. "
-                "Always respond in the language of the user unless otherwise indicated. "
-                "Use a maximum of four sentences to keep the response concise."
+                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
+                "Respond using the currency of the user's location if specified; otherwise, default to euros."
+
             ),
             llm=self.llm
         )
@@ -215,13 +218,14 @@ class CrewAIChatbot:
         return Agent(
             role='Step-by-Step Guide',
             goal='Provide detailed step-by-step instructions for any task.',
-            tools=[self.search_tool] + self.pdf_tools,
+            tools=[self.search_tool],
             verbose=True,
             backstory=(
                 "You are an expert guide. Your role is to break down complex tasks into clear, manageable steps."
                 "Always ensure the instructions are simple and precise, adjusting based on the user's feedback."
                 "Provide explanations for each step, but keep them concise."
-                "Respond in the language of the user unless otherwise indicated."
+                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise." 
+                "Respond using the currency of the user’s location if specified; otherwise, default to euros."
             ),
             llm=self.llm
         )
@@ -230,13 +234,13 @@ class CrewAIChatbot:
         return Agent(
             role='Contractor Finder',
             goal='Search for contractors who can handle home improvement projects and provide contact details or links for budget estimation.',
-            tools=[self.search_tool, *self.scrape_tools],
+            tools=[self.search_tool],
             verbose=True,
             backstory=(
                 "You are an expert in finding reliable contractors for home improvement projects. "
                 "Your role is to find contractors based on the user’s project description, preferably near their location. "
                 "Search for relevant contractor listings, company websites, and review aggregators, and provide contact details or links where they can request a budget. "
-                "Always respond in the language of the user unless otherwise indicated."
+                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
             ),
             llm=self.llm
         )
@@ -252,7 +256,8 @@ class CrewAIChatbot:
                 "Your role is to identify potential hazards and offer specific, precautionary steps to ensure safety. "
                 "For each task, outline the required safety measures, such as protective gear, safety checks, or any specific warnings. "
                 "Provide clear, detailed instructions, making sure to emphasize steps where caution is required. "
-                "Respond in the language of the user unless otherwise specified, and adapt instructions based on the context and task complexity."
+                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
+                "adapt instructions based on the context and task complexity."
             ),
             llm=self.llm
         )
@@ -434,7 +439,7 @@ class CrewAIChatbot:
     def get_response(self, question):
         try:
             self.context['conversation_history'].append({"role": "user", "content": question})
-
+            # result = None
             # Step 0: Check relevance
             relevance_task = self.check_relevance_task(question)
             relevance_crew = Crew(
@@ -523,3 +528,16 @@ class CrewAIChatbot:
             return f"Lo siento, parece que hay un problema con una de las herramientas o atributos: {str(e)}"
         except Exception as e:
             return f"Perdón, encontré un error al buscar una solución: {str(e)}"
+        
+
+
+
+
+
+#Tareas
+# - agente presentador
+# - agregar el agente de seguridad
+# - mejorar el scraping
+# - human input
+# - agente imagen
+# - 
