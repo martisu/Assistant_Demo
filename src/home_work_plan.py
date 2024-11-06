@@ -26,6 +26,7 @@ class CrewAIChatbot:
             'cost_estimation': None,
             'step_by_step_guide': None,
             'contractors': [],
+            'safety_guidance': None,
             'conversation_history': []
         }
         
@@ -262,6 +263,22 @@ class CrewAIChatbot:
             llm=self.llm
         )
 
+    def presentation_agent(self):
+        return Agent(
+            role="Presentation Expert",
+            goal="Compose a clear, well-structured response with all gathered project details in the user's language.",
+            tools=[],  # No external tools are required for presentation composition
+            verbose=True,
+            backstory=(
+                "You are a presentation expert responsible for assembling and presenting all relevant project information "
+                "in a clear and structured format. Your role is to create a coherent response that includes project guidance, "
+                "required materials, tools, cost estimation, step-by-step guide, and recommended contractors. "
+                "Ensure the response is understandable, visually organized, and presented in the user's language."
+            ),
+            llm=self.llm
+        )
+
+
 ##------------------------------------TASKS------------------------------------
 
     def check_relevance_task(self, question):
@@ -282,6 +299,7 @@ class CrewAIChatbot:
             agent=self.relevance_checker_agent(),
             expected_output="A decision of 'RELATED: ' or 'NOT RELATED: ' followed by an appropriate response."
         )
+    
     def image_description_task(self, image):
         return Task(
             description=(
@@ -413,15 +431,24 @@ class CrewAIChatbot:
             expected_output=(
                 "A list of contractors with their contact information or website links, including details on how to request a budget."
             )
-            # human_input=True
+#            human_input=True
         )
 
     def safety_task(self, task_description):
+        gather_info = self.context['gather_info']
+        materials = self.context['materials']
+        tools = self.context['tools']
+        step_by_step_guide = self.context['step_by_step_guide']
         return Task(
             description=(
                 f"Provide a careful, safety-focused guide for the following task: {task_description}. "
                 f"The instructions should prioritize accident prevention by outlining each step in detail, highlighting any safety risks, "
                 f"and suggesting appropriate protective measures or precautions. Emphasize where extra caution is needed."
+                f"Consider the question of the user: {task_description}."
+                f"Consider additional info in context: {gather_info}. " 
+                f"Consider materials in context: {materials}. " 
+                f"Consider tools in context: {tools}. "
+                f"Consider step by step guide in context: {step_by_step_guide}. " 
             ),
             agent=self.safety_agent(),
             expected_output=(
@@ -433,13 +460,49 @@ class CrewAIChatbot:
             )
         )
 
+    def presentation_task(self, task_description):
+        gather_info = self.context['gather_info']
+        materials = self.context['materials']
+        tools = self.context['tools']
+        step_by_step_guide = self.context['step_by_step_guide']
+        contractors = self.context['contractors']
+        cost_estimation = self.context['cost_estimation']
+        safety_guidance = self.context['safety_guidance']
+
+        return Task(
+            description=(
+                f"Compose a final, well-structured response with the collected project details based on the user's question."
+                f"Include project guidance, required materials, tools, cost estimation, step-by-step guide, and recommended contractors. "
+                f"Ensure that the response is visually clear, well-organized, and presented in the user's language. "
+                f"If translation is necessary, adapt the response to the language detected in the user's question."
+                f"Consider the question of the user: {task_description}."
+                f"Consider additional info in context: {gather_info}. " 
+                f"Consider materials in context: {materials}. " 
+                f"Consider tools in context: {tools}. "
+                f"Consider step by step guide in context: {step_by_step_guide}. " 
+                f"Consider contractors in context: {contractors}. "
+                f"Consider cost estimation in context: {cost_estimation}. "
+                f"Consider safty guidance notes in context: {safety_guidance}. "
+            ),
+            agent=self.presentation_agent(),
+            expected_output=(
+                "A well-structured response that includes all project as required:"
+                "1. Materials."
+                "2. Tools."
+                "3. Step by step guide."
+                "4. Contractors information."
+                "5. Cost estimation."
+                "6. Safty guidance notes."
+            )
+        )
 
     ##------------------------------------CREATE CREW------------------------------------
 
     def get_response(self, question):
         try:
+            result = None
             self.context['conversation_history'].append({"role": "user", "content": question})
-            # result = None
+
             # Step 0: Check relevance
             relevance_task = self.check_relevance_task(question)
             relevance_crew = Crew(
@@ -494,31 +557,15 @@ class CrewAIChatbot:
                     contractor_crew = Crew(agents=[contractor_task.agent], tasks=[contractor_task], verbose=True)
                     self.context['contractors'] = contractor_crew.kickoff()
 
-                    # Create the main crew
-#                    home_improvement_crew = Crew(
-#                        agents=[gather_info.agent, 
-#                                materials_task.agent, 
-#                                tools_task.agent, 
-#                                cost_task.agent, 
-#                                guide_task.agent],
-#
-#                        tasks=[gather_info, 
-#                               materials_task, 
-#                               tools_task, 
-#                               cost_task, 
-#                               guide_task],
-#                        verbose=2
-#                    )            
-#                    result = home_improvement_crew.kickoff()
+                    # Step 8: Safety guidance
+                    safety_task = self.safety_task(question)
+                    safety_crew = Crew(agents=[safety_task.agent], tasks=[safety_task], verbose=True)
+                    self.context['safety_guidance'] = safety_crew.kickoff()
 
-                    result = (
-                        f"**Project Guidance:**\n{self.context['guidance']}\n\n"
-                        f"**Required Materials:**\n{self.context['materials']}\n\n"
-                        f"**Required Tools:**\n{self.context['tools']}\n\n"
-                        f"**Cost Estimation:**\n{self.context['cost_estimation']}\n\n"
-                        f"**Step-by-Step Guide:**\n{self.context['step_by_step_guide']}\n\n"
-                        f"**Recommended Contractors:**\n{self.context['contractors']}"
-                    )
+                    # Presentation
+                    presentation_task = self.presentation_task(question)
+                    presentation_crew = Crew(agents=[presentation_task.agent], tasks=[presentation_task], verbose=True)
+                    result = presentation_crew.kickoff()
 
             self.context['conversation_history'].append({"role": "assistant", "content": result})
 
