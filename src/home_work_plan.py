@@ -175,6 +175,7 @@ class CrewAIChatbot:
                 "Your role is to provide detailed advice on materials used for various projects. "
                 "Create a list using markdown that includes the materials and their alternatives. "
                 "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
+                "Analyze if there is enough information to perform the task. "
                 "Use a maximum of four sentences to keep the response concise."
             ),
             llm=self.llm
@@ -193,6 +194,7 @@ class CrewAIChatbot:
             "Using the task context provided, filter and select only the tools required for the specific job. "
             "Exclude any materials or unrelated items. Provide the list in markdown format, "
             "including alternatives if available. "
+            "Analyze if there is enough information to perform the task. "
             "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
             ),
             llm=self.llm
@@ -210,6 +212,7 @@ class CrewAIChatbot:
                 "Your role is to provide detailed cost estimations for materials used. "
                 "Create a list using markdown that includes the costs of each material and their alternatives. "
                 "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
+                "Analyze if there is enough information to perform the task. "
                 "Respond using the currency of the user's location if specified; otherwise, default to euros."
 
             ),
@@ -226,6 +229,7 @@ class CrewAIChatbot:
                 "Always ensure the instructions are simple and precise, adjusting based on the user's feedback."
                 "Provide explanations for each step, but keep them concise."
                 "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise." 
+                "Analyze if there is enough information to perform the task. "
                 "Respond using the currency of the user’s location if specified; otherwise, default to euros."
             ),
             llm=self.llm
@@ -241,6 +245,7 @@ class CrewAIChatbot:
                 "You are an expert in finding reliable contractors for home improvement projects. "
                 "Your role is to find contractors based on the user’s project description, preferably near their location. "
                 "Search for relevant contractor listings, company websites, and review aggregators, and provide contact details or links where they can request a budget. "
+                "Analyze if there is enough information to perform the task. "
                 "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
             ),
             llm=self.llm
@@ -258,6 +263,7 @@ class CrewAIChatbot:
                 "For each task, outline the required safety measures, such as protective gear, safety checks, or any specific warnings. "
                 "Provide clear, detailed instructions, making sure to emphasize steps where caution is required. "
                 "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
+                "Analyze if there is enough information to perform the task. "
                 "adapt instructions based on the context and task complexity."
             ),
             llm=self.llm
@@ -352,11 +358,15 @@ class CrewAIChatbot:
             description=f"List the materials required for the following project: {project_description}. "
                         f"Consider additional info in context: {gather_info}. " 
                         f"It should only contain the MATERIALS, DO NOT add the TOOLS"
-                        f"Include alternatives where applicable.",
+                        f"Include alternatives where applicable."
+                        f"Analyze if there is enough information to perform the task. ",
             agent=self.materials_agent(),
             expected_output=(
-                "A markdown list of materials and their alternatives, e.g.,:\n\n"
-                "- **Material 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
+                "A markdown list of materials with quantities and alternatives, e.g.,:\n\n"
+                "- **Material 1**: Description\n"
+                "  - Quantity: 5 units\n"
+                "  - Alternative: Option 1 (3 units), Option 2 (5 units)\n"
+                "(Text indicating the missing information needed to provide a complete response, if necessary.)"
             )
     )
 
@@ -367,11 +377,13 @@ class CrewAIChatbot:
             description=f"List the tools required for the following project: {project_description}. "
                         f"Consider additional info in context: {gather_info}. " 
                         f"Consider materials in context: {materials}. " 
-                        f"It should only contain the TOOLS, DO NOT add the MATERIALS",                        
+                        f"It should only contain the TOOLS, DO NOT add the MATERIALS."
+                        f"Analyze if there is enough information to perform the task. ",              
             agent=self.tools_agent(),
             expected_output=(
                 "A markdown list of tools and their alternatives, e.g.,:\n\n"
                 "- **Tool 1**: Description\n  - Alternative: Option 1\n  - Alternative: Option 2\n"
+                "(Text indicating the missing information needed to provide a complete response, if necessary.)"
             )
     )
  
@@ -384,13 +396,15 @@ class CrewAIChatbot:
                         f"Consider additional info in context: {gather_info}. " 
                         f"Consider materials in context: {materials}. " 
                         f"Consider tools in context: {tools}. " 
-                        f"Include costs for alternatives where applicable.",
+                        f"Include costs for alternatives where applicable."
+                        f"Analyze if there is enough information to perform the task. ",
             agent=self.cost_agent(),
             expected_output=(
                 "A markdown table listing materials and their costs, including alternatives, e.g.,:\n\n"
                 "| Material        | Cost  | Alternatives               |\n"
                 "|----------------|-------|----------------------------|\n"
                 "| Material 1     | $10   | Alternative 1 ($8), Alt 2 ($12) |\n"
+                "(Text indicating the missing information needed to provide a complete response, if necessary.)"
             )
         )
     def guide_task(self, repair_or_renovation_process):
@@ -402,7 +416,8 @@ class CrewAIChatbot:
                         f"Consider additional info in context: {gather_info}. " 
                         f"Consider materials in context: {materials}. " 
                         f"Consider tools in context: {tools}. " 
-                        f"Ensure that the steps are easy to follow and comprehensive, covering all necessary tools, materials, and safety precautions.",
+                        f"Ensure that the steps are easy to follow and comprehensive, covering all necessary tools, materials, and safety precautions."
+                        f"Analyze if there is enough information to perform the task. ",
             agent=self.guide_agent(),
             expected_output=(
                 "A list of detailed steps for the repair or renovation process. For example:\n\n"
@@ -411,6 +426,7 @@ class CrewAIChatbot:
                 "3. Prepare the work area to ensure safety and efficiency.\n"
                 "4. Step-by-step breakdown of the actual work (e.g., removing old materials, installing new ones).\n"
                 "5. Final touches and clean-up instructions.\n"
+                "(Text indicating the missing information needed to provide a complete response, if necessary.)"
             )
         )
     
@@ -426,10 +442,12 @@ class CrewAIChatbot:
                 f"Consider tools in context: {tools}. "
                 f"Provide contact details or links where the user can request a budget estimation. "
                 f"Ensure the contractors are well-reviewed or reputable, if possible."
+                f"Analyze if there is enough information to perform the task (location, etc.). "
             ),
             agent=self.contractor_search_agent(),
             expected_output=(
-                "A list of contractors with their contact information or website links, including details on how to request a budget."
+                "A list of contractors with their contact information or website links, including details on how to request a budget if there is not need more information."
+                "(Text indicating the missing information needed to provide a complete response, if necessary.)"
             )
 #            human_input=True
         )
@@ -449,6 +467,7 @@ class CrewAIChatbot:
                 f"Consider materials in context: {materials}. " 
                 f"Consider tools in context: {tools}. "
                 f"Consider step by step guide in context: {step_by_step_guide}. " 
+                f"Analyze if there is enough information to perform the task. "
             ),
             agent=self.safety_agent(),
             expected_output=(
@@ -457,6 +476,7 @@ class CrewAIChatbot:
                 "  - **Safety Tip**: Ensure the floor is dry to avoid slips.\n"
                 "- **Step 2**: Gather necessary materials and wear protective gloves.\n"
                 "  - **Safety Tip**: Use gloves rated for chemical handling if using cleaning agents.\n"
+                "(Text indicating the missing information needed to provide a complete response, if necessary.)"
             )
         )
 
@@ -477,22 +497,23 @@ class CrewAIChatbot:
                 f"If translation is necessary, adapt the response to the language detected in the user's question."
                 f"Consider the question of the user: {task_description}."
                 f"Consider additional info in context: {gather_info}. " 
-                f"Consider materials in context: {materials}. " 
-                f"Consider tools in context: {tools}. "
-                f"Consider step by step guide in context: {step_by_step_guide}. " 
-                f"Consider contractors in context: {contractors}. "
-                f"Consider cost estimation in context: {cost_estimation}. "
-                f"Consider safty guidance notes in context: {safety_guidance}. "
+                f"Consider materials in context: {materials}. (Also missing ininformation if there is indicated)." 
+                f"Consider tools in context: {tools}. (Also missing ininformation if there is indicated)."
+                f"Consider step by step guide in context: {step_by_step_guide}. (Also missing ininformation if there is indicated)."
+                f"Consider contractors in context: {contractors}. (Also missing ininformation if there is indicated)."
+                f"Consider cost estimation in context: {cost_estimation}. (Also missing ininformation if there is indicated)."
+                f"Consider safty guidance notes in context: {safety_guidance}. (Also missing ininformation if there is indicated)."
             ),
             agent=self.presentation_agent(),
             expected_output=(
                 "A well-structured response that includes all project as required:"
-                "1. Materials."
-                "2. Tools."
-                "3. Step by step guide."
-                "4. Contractors information."
-                "5. Cost estimation."
-                "6. Safty guidance notes."
+                "- Materials."
+                "- Tools."
+                "- Step by step guide."
+                "- Contractors information."
+                "- Cost estimation."
+                "- Safty guidance notes."
+                "- Questions asking for missing information if there is missing informationor."
             )
         )
 
@@ -556,6 +577,8 @@ class CrewAIChatbot:
                     contractor_task = self.contractor_search_task(question) 
                     contractor_crew = Crew(agents=[contractor_task.agent], tasks=[contractor_task], verbose=True)
                     self.context['contractors'] = contractor_crew.kickoff()
+                    if relevance_result.lower().startswith('information_required:'):
+                        return contractor_crew.kickoff()
 
                     # Step 8: Safety guidance
                     safety_task = self.safety_task(question)
