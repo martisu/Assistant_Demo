@@ -76,6 +76,28 @@ class CrewAIChatbot:
 
     def image_agent(self):
         return
+    
+    def chat_agent(self):
+        return Agent(
+            role='Conversation Orchestrator',
+            goal=(
+                "Coordinate the conversation by understanding user intent and directing inquiries to the most appropriate agent. "
+                "If specific details are missing (e.g., location, dimensions, or materials), prompt the user for this information. "
+                "If the user cannot provide details, make reasonable assumptions and proceed with that basis. "
+                "Ensure each response keeps the conversation coherent and focused on the user's project needs."
+            ),
+            tools=[self.search_tool],
+            verbose=True,
+            backstory=(
+                "You are a conversational orchestrator, responsible for guiding users through a structured flow of questions "
+                "and responses to meet their home improvement needs. Identify the user's intent, assess required details, and ask "
+                "for missing information when needed (e.g., dimensions for cost estimation). If the user cannot provide details, "
+                "assume typical values and notify the user about these assumptions in your response."
+            ),
+            llm=self.llm
+    )
+
+
 
     def relevance_checker_agent(self):
         return Agent(
@@ -286,6 +308,27 @@ class CrewAIChatbot:
 
 
 ##------------------------------------TASKS------------------------------------
+
+
+    def chat_orchestration_task(self, user_input):
+        return Task(
+            description=(
+                "Analyze the user input and determine the next step in the conversation. "
+                "If the input lacks necessary details (e.g., dimensions, material specifics, location), prompt the user to provide this information. "
+                "For example, if a user mentions wanting a cost estimate to repair a pool but omits the pool's dimensions, ask for the approximate area. "
+                "If the user can't specify, assume standard dimensions and inform the user about this assumption."
+            ),
+            agent=self.chat_agent(),
+            input=user_input,
+            expected_output=(
+                "A clarifying prompt or assumption-based response to ensure the user’s needs are accurately addressed. "
+                "Examples:\n\n"
+                "- If dimensions are missing: 'Could you specify the approximate area of the pool for a more accurate cost estimate?' "
+                "- If location is missing for contractor search: 'Could you provide your location for nearby contractor recommendations?'"
+            )
+    )
+
+
 
     def check_relevance_task(self, question):
         recent_history = self.context['conversation_history'][-5:]
