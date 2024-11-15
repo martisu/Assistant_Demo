@@ -100,19 +100,42 @@ class CrewAIChatbot:
 
     def relevance_checker_agent(self):
         return Agent(
-            role='Relevance Checker and Redirector',
-            goal='Determine if a query is related to home improvement projects and provide a helpful response.',
+            role='Dynamic Relevance Checker and Interactive Orchestrator',
+            goal=(
+                "Evaluate if the user's query relates to home improvement projects. If relevant, guide the conversation "
+                "to collect missing details dynamically. If not, provide a friendly and informative response redirecting the user "
+                "to home improvement topics of interest."
+            ),
             tools=[self.search_tool],
             verbose=True,
             backstory=(
-                "You are an expert in home improvement projects with excellent communication skills. "
-                "Your task is to determine if a question is about home repairs, renovations, or any other home improvement task. "
-                "If the input is not related, gently redirect the conversation back to home improvement. "
-                "Always respond in the language of the user. "
-                "Provide a friendly explanation and suggest a related home improvement topic if possible."
+                "You are a highly knowledgeable and personable expert in home improvement. Your role is to determine whether "
+                "the user's input pertains to home improvement tasks such as repairs, renovations, installations, or construction. "
+                "If relevant, engage interactively to clarify missing details about the project by asking specific questions "
+                "related to project type, dimensions, materials, budget, or location. Use language that is clear, concise, and "
+                "adaptable to the user's tone and input style.\n\n"
+                "If the input is unrelated to home improvement, gently redirect the conversation by explaining why it doesn't match "
+                "home improvement criteria. Suggest a related topic or task, maintaining a friendly and approachable tone. "
+                "Always ensure the user feels supported and that their input is valued, responding in their preferred language."
             ),
-            llm=self.llm
+            llm=self.llm,
+            adaptability={
+                "Language Detection": "Automatically respond in the user's detected language.",
+                "Context Sensitivity": "Adapt responses based on user tone, complexity of input, and level of detail provided.",
+            },
+            dynamic_interaction=(
+                "If the query is relevant but lacks clarity, ask targeted questions to gather information dynamically. Examples include:\n"
+                "1. Asking for project type (e.g., 'Is this about a repair or renovation?').\n"
+                "2. Requesting specific details (e.g., 'What are the dimensions of the space?' or 'Do you have a specific budget in mind?').\n"
+                "3. Providing helpful assumptions if the user cannot provide certain details (e.g., 'Based on your input, I will assume the dimensions are standard.').\n\n"
+                "Ensure the interaction is seamless and focused on collecting actionable information for downstream tasks."
+            ),
+            tone_and_style=(
+                "Professional yet conversational tone, aiming to make the user feel at ease while ensuring clarity in responses. "
+                "Always be polite, concise, and maintain an inviting style of communication."
+            )
         )
+
 
     def planificator_agent(self):
         return Agent(
@@ -307,6 +330,41 @@ class CrewAIChatbot:
 
 
 ##------------------------------------TASKS------------------------------------
+
+    def relevance_and_orchestration_task(self, question):
+        recent_history = self.context['conversation_history'][-5:]
+        history_str = "\n".join([f"{entry['role']}: {entry['content']}" for entry in recent_history])
+
+        return Task(
+            description=(
+                f"Given the following recent conversation history:\n\n{history_str}\n\n"
+                f"Determine if the user’s input is related to home improvement. "
+                f"If unrelated, respond with 'NOT RELATED: ' followed by a friendly explanation redirecting the user to relevant topics.\n\n"
+                f"If related, dynamically interact to clarify any unclear details about the user's project. "
+                f"Ask specific questions to gather the following information:\n"
+                f"1. Project type (e.g., repair, renovation).\n"
+                f"2. Essential details: location, dimensions, materials, budget, etc.\n"
+                f"3. Handle incomplete information by making reasonable assumptions and notifying the user.\n\n"
+                f"Once all necessary details are gathered, respond with 'READY: ' followed by a summary to proceed to the next steps."
+            ),
+            agent=Agent(
+                role='Relevance Checker and Dynamic Orchestrator',
+                goal=(
+                    "Evaluate the relevance of the user's input to home improvement. If related, guide the conversation to collect all "
+                    "necessary information dynamically. If unrelated, gently redirect to a relevant topic."
+                ),
+                tools=[self.search_tool],
+                verbose=True,
+                backstory=(
+                    "You are an expert in home improvement projects, capable of engaging users dynamically to clarify their requests. "
+                    "You ensure all necessary information is collected and ready for the next workflow steps."
+                ),
+                llm=self.llm
+            ),
+            expected_output=(
+                "Output should be 'NOT RELATED: ' or 'READY: ' followed by the appropriate response. If 'READY', include all collected details."
+            )
+        )
 
 
     def orchestrator_task(self, question):
@@ -579,7 +637,7 @@ class CrewAIChatbot:
             self.context['conversation_history'].append({"role": "user", "content": question})
 
             # Declarar tareas en orden
-            relevance_task = self.check_relevance_task(question)
+            relevance_task = self.relevance_and_orchestration_task(question)  # Combina relevancia y orquestación
             classification_task = self.planificator_task(question)
             guidance_task = self.gather_all_information(question)
             materials_task = self.materials_task(question)
@@ -590,7 +648,7 @@ class CrewAIChatbot:
             safety_task = self.safety_task(question)
             presentation_task = self.presentation_task(question)
 
-            # Paso 0: Verificar relevancia
+            # Paso 0: Verificar relevancia y recopilar información dinámica
             relevance_crew = Crew(
                 agents=[relevance_task.agent],
                 tasks=[relevance_task],
@@ -602,50 +660,52 @@ class CrewAIChatbot:
             if relevance_result.lower().startswith('not related:'):
                 result = relevance_result.split(':', 1)[1].strip()
             else:
-                # Paso 1: Clasificar el proyecto (si no está definido)
-                if self.context['project_type'] is None or self.context['project_type'] == 'undefined':
-                    classification_crew = Crew(
-                        agents=[classification_task.agent],
-                        tasks=[classification_task],
-                        verbose=True
-                    )
-                    self.context['project_type'] = classification_crew.kickoff()
+                # Si se requiere más información, detener y continuar la interacción dinámica
+                if relevance_result.lower().startswith('needs more info:'):
+                    return relevance_result.split(':', 1)[1].strip()
 
-                # Paso 2: Proporcionar orientación
-                guidance_crew = Crew(agents=[guidance_task.agent], tasks=[guidance_task], verbose=True)
-                self.context['gather_info'] = guidance_crew.kickoff()
+                # Si la información está lista, proceder con los pasos siguientes
+                if relevance_result.lower().startswith('ready:'):
+                    # Paso 1: Clasificar el proyecto (si no está definido)
+                    if self.context['project_type'] is None or self.context['project_type'] == 'undefined':
+                        classification_crew = Crew(
+                            agents=[classification_task.agent],
+                            tasks=[classification_task],
+                            verbose=True
+                        )
+                        self.context['project_type'] = classification_crew.kickoff()
 
-                # Paso 3: Listar materiales
-                materials_crew = Crew(agents=[materials_task.agent], tasks=[materials_task], verbose=True)
-                self.context['materials'] = materials_crew.kickoff()
+                    # Paso 2: Proporcionar orientación
+                    guidance_crew = Crew(agents=[guidance_task.agent], tasks=[guidance_task], verbose=True)
+                    self.context['gather_info'] = guidance_crew.kickoff()
 
-                # Paso 4: Listar herramientas
-                tools_crew = Crew(agents=[tools_task.agent], tasks=[tools_task], verbose=True)
-                self.context['tools'] = tools_crew.kickoff()
+                    # Paso 3: Listar materiales
+                    materials_crew = Crew(agents=[materials_task.agent], tasks=[materials_task], verbose=True)
+                    self.context['materials'] = materials_crew.kickoff()
 
-                # Paso 5: Estimación de costos
-                cost_crew = Crew(agents=[cost_task.agent], tasks=[cost_task], verbose=True)
-                self.context['cost_estimation'] = cost_crew.kickoff()
+                    # Paso 4: Listar herramientas
+                    tools_crew = Crew(agents=[tools_task.agent], tasks=[tools_task], verbose=True)
+                    self.context['tools'] = tools_crew.kickoff()
 
-                # Paso 6: Guía paso a paso
-                guide_crew = Crew(agents=[guide_task.agent], tasks=[guide_task], verbose=True)
-                self.context['step_by_step_guide'] = guide_crew.kickoff()
+                    # Paso 5: Estimación de costos
+                    cost_crew = Crew(agents=[cost_task.agent], tasks=[cost_task], verbose=True)
+                    self.context['cost_estimation'] = cost_crew.kickoff()
 
-                # Paso 7: Búsqueda de contratistas
-                contractor_crew = Crew(agents=[contractor_task.agent], tasks=[contractor_task], verbose=True)
-                self.context['contractors'] = contractor_crew.kickoff()
+                    # Paso 6: Guía paso a paso
+                    guide_crew = Crew(agents=[guide_task.agent], tasks=[guide_task], verbose=True)
+                    self.context['step_by_step_guide'] = guide_crew.kickoff()
 
-                # Verificar si se requiere información adicional
-                if relevance_result.lower().startswith('information_required:'):
-                    return contractor_crew.kickoff()
+                    # Paso 7: Búsqueda de contratistas
+                    contractor_crew = Crew(agents=[contractor_task.agent], tasks=[contractor_task], verbose=True)
+                    self.context['contractors'] = contractor_crew.kickoff()
 
-                # Paso 8: Orientación de seguridad
-                safety_crew = Crew(agents=[safety_task.agent], tasks=[safety_task], verbose=True)
-                self.context['safety_guidance'] = safety_crew.kickoff()
+                    # Paso 8: Orientación de seguridad
+                    safety_crew = Crew(agents=[safety_task.agent], tasks=[safety_task], verbose=True)
+                    self.context['safety_guidance'] = safety_crew.kickoff()
 
-                # Paso 9: Presentación final
-                presentation_crew = Crew(agents=[presentation_task.agent], tasks=[presentation_task], verbose=True)
-                result = presentation_crew.kickoff()
+                    # Paso 9: Presentación final
+                    presentation_crew = Crew(agents=[presentation_task.agent], tasks=[presentation_task], verbose=True)
+                    result = presentation_crew.kickoff()
 
             # Registrar la respuesta en el historial de la conversación
             self.context['conversation_history'].append({"role": "assistant", "content": result})
@@ -657,7 +717,8 @@ class CrewAIChatbot:
         except Exception as e:
             return f"Perdón, encontré un error al buscar una solución: {str(e)}"
 
-        
+
+            
 
 
         
