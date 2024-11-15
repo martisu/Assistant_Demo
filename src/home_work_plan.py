@@ -572,7 +572,13 @@ class CrewAIChatbot:
 
     def get_response(self, question):
         try:
-            # Agents in order of execution (defined at the start for clarity)
+            # Inicializar el resultado
+            result = None
+
+            # Registrar la pregunta en el historial de la conversación
+            self.context['conversation_history'].append({"role": "user", "content": question})
+
+            # Declarar tareas en orden
             relevance_task = self.check_relevance_task(question)
             classification_task = self.planificator_task(question)
             guidance_task = self.gather_all_information(question)
@@ -584,10 +590,7 @@ class CrewAIChatbot:
             safety_task = self.safety_task(question)
             presentation_task = self.presentation_task(question)
 
-            result = None
-            self.context.setdefault('conversation_history', []).append({"role": "user", "content": question})
-
-            # Step 0: Relevance Task
+            # Paso 0: Verificar relevancia
             relevance_crew = Crew(
                 agents=[relevance_task.agent],
                 tasks=[relevance_task],
@@ -595,70 +598,66 @@ class CrewAIChatbot:
             )
             relevance_result = relevance_crew.kickoff()
 
+            # Si no es relevante, devolver el resultado de relevancia
             if relevance_result.lower().startswith('not related:'):
                 result = relevance_result.split(':', 1)[1].strip()
             else:
-                while True:
-                    # Step 1: Classification Task
-                    if self.context.get('project_type') is None or self.context['project_type'] == 'undefined':
-                        classification_crew = Crew(
-                            agents=[classification_task.agent],
-                            tasks=[classification_task],
-                            verbose=True
-                        )
-                        self.context['project_type'] = classification_crew.kickoff()
+                # Paso 1: Clasificar el proyecto (si no está definido)
+                if self.context['project_type'] is None or self.context['project_type'] == 'undefined':
+                    classification_crew = Crew(
+                        agents=[classification_task.agent],
+                        tasks=[classification_task],
+                        verbose=True
+                    )
+                    self.context['project_type'] = classification_crew.kickoff()
 
-                    # Step 2: Guidance Task
-                    guidance_crew = Crew(agents=[guidance_task.agent], tasks=[guidance_task], verbose=True)
-                    gathered_info = guidance_crew.kickoff()
+                # Paso 2: Proporcionar orientación
+                guidance_crew = Crew(agents=[guidance_task.agent], tasks=[guidance_task], verbose=True)
+                self.context['gather_info'] = guidance_crew.kickoff()
 
-                    if gathered_info.lower().startswith("information required:"):
-                        clarification_needed = gathered_info.split(":", 1)[1].strip()
-                        return f"Could you clarify: {clarification_needed}?"
-                    elif gathered_info.lower().startswith("assumed:"):
-                        assumption_details = gathered_info.split(":", 1)[1].strip()
-                        return f"I assumed the following to proceed: {assumption_details}."
-                    else:
-                        self.context['gather_info'] = gathered_info
+                # Paso 3: Listar materiales
+                materials_crew = Crew(agents=[materials_task.agent], tasks=[materials_task], verbose=True)
+                self.context['materials'] = materials_crew.kickoff()
 
-                    # Step 3: Materials Task
-                    materials_crew = Crew(agents=[materials_task.agent], tasks=[materials_task], verbose=True)
-                    self.context['materials'] = materials_crew.kickoff()
+                # Paso 4: Listar herramientas
+                tools_crew = Crew(agents=[tools_task.agent], tasks=[tools_task], verbose=True)
+                self.context['tools'] = tools_crew.kickoff()
 
-                    # Step 4: Tools Task
-                    tools_crew = Crew(agents=[tools_task.agent], tasks=[tools_task], verbose=True)
-                    self.context['tools'] = tools_crew.kickoff()
+                # Paso 5: Estimación de costos
+                cost_crew = Crew(agents=[cost_task.agent], tasks=[cost_task], verbose=True)
+                self.context['cost_estimation'] = cost_crew.kickoff()
 
-                    # Step 5: Cost Estimation Task
-                    cost_crew = Crew(agents=[cost_task.agent], tasks=[cost_task], verbose=True)
-                    self.context['cost_estimation'] = cost_crew.kickoff()
+                # Paso 6: Guía paso a paso
+                guide_crew = Crew(agents=[guide_task.agent], tasks=[guide_task], verbose=True)
+                self.context['step_by_step_guide'] = guide_crew.kickoff()
 
-                    # Step 6: Step-by-Step Guidance Task
-                    guide_crew = Crew(agents=[guide_task.agent], tasks=[guide_task], verbose=True)
-                    self.context['step_by_step_guide'] = guide_crew.kickoff()
+                # Paso 7: Búsqueda de contratistas
+                contractor_crew = Crew(agents=[contractor_task.agent], tasks=[contractor_task], verbose=True)
+                self.context['contractors'] = contractor_crew.kickoff()
 
-                    # Step 7: Contractor Search Task
-                    contractor_crew = Crew(agents=[contractor_task.agent], tasks=[contractor_task], verbose=True)
-                    self.context['contractors'] = contractor_crew.kickoff()
+                # Verificar si se requiere información adicional
+                if relevance_result.lower().startswith('information_required:'):
+                    return contractor_crew.kickoff()
 
-                    # Step 8: Safety Guidance Task
-                    safety_crew = Crew(agents=[safety_task.agent], tasks=[safety_task], verbose=True)
-                    self.context['safety_guidance'] = safety_crew.kickoff()
+                # Paso 8: Orientación de seguridad
+                safety_crew = Crew(agents=[safety_task.agent], tasks=[safety_task], verbose=True)
+                self.context['safety_guidance'] = safety_crew.kickoff()
 
-                    # Step 9: Presentation Task
-                    presentation_crew = Crew(agents=[presentation_task.agent], tasks=[presentation_task], verbose=True)
-                    result = presentation_crew.kickoff()
+                # Paso 9: Presentación final
+                presentation_crew = Crew(agents=[presentation_task.agent], tasks=[presentation_task], verbose=True)
+                result = presentation_crew.kickoff()
 
-                    if result:  # Exit the loop once all information is gathered and processed.
-                        break
-
+            # Registrar la respuesta en el historial de la conversación
             self.context['conversation_history'].append({"role": "assistant", "content": result})
+
             return result
 
         except AttributeError as e:
-            return f"Sorry, it seems there's an issue with one of the tools or attributes: {str(e)}"
+            return f"Lo siento, parece que hay un problema con una de las herramientas o atributos: {str(e)}"
         except Exception as e:
-            return f"Apologies, I encountered an error while processing your request: {str(e)}"
+            return f"Perdón, encontré un error al buscar una solución: {str(e)}"
+
+        
 
 
         
