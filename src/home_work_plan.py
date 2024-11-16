@@ -1,21 +1,24 @@
 from crewai import Agent, Task, Crew, Process
+from crewai_tools import PDFSearchTool
 from langchain_openai import ChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchRun
 from crewai_tools import ScrapeWebsiteTool
-from langchain_community.document_loaders import PyPDFLoader
-from langchain.text_splitter import CharacterTextSplitter
-from langchain.tools import Tool
 import yaml
 import os
 
 class CrewAIChatbot:
     def __init__(self, credentials_path):
         self.credentials = self.load_credentials(credentials_path)
-        self.llm = ChatOpenAI(model_name="gpt-4o", openai_api_key=self.credentials["OPENAI_API_KEY"])
+        # Set OpenAI API key in environment variables
+        os.environ["OPENAI_API_KEY"] = self.credentials["OPENAI_API_KEY"]
+        
+        self.llm = ChatOpenAI(
+            model_name="gpt-4",
+            openai_api_key=self.credentials["OPENAI_API_KEY"]
+        )
         self.search_tool = DuckDuckGoSearchRun()
-#        self.scrape_tools = self.load_scrape_tools()
         self.pdf_tools = self.load_pdf_tools()
-#        self.all_tools = [self.search_tool] + self.scrape_tools + self.pdf_tools
+        
         self.context = {
             'guidance': None,
             'gather_info': None,
@@ -30,9 +33,41 @@ class CrewAIChatbot:
             'conversation_history': []
         }
 
+    def load_pdf_tools(self):
+        pdf_tools = []
+        pdf_dir = "data/"
+        
+        tool_config = {
+            "embedding_model": {
+                "provider": "openai",
+                "config": {
+                    "api_key": self.credentials["OPENAI_API_KEY"]
+                }
+            }
+        }
+        
+        for filename in os.listdir(pdf_dir):
+            if filename.endswith(".pdf"):
+                pdf_path = os.path.join(pdf_dir, filename)
+                
+                # Create PDFSearchTool with configuration
+                pdf_tool = PDFSearchTool(
+                    file_path=pdf_path,
+                    name=f"PDF_Reader_{filename}",
+                    description=f"Use this tool to search and extract information from the PDF file {filename}",
+                    max_chunks=5,
+                    config=tool_config
+                )
+                pdf_tools.append(pdf_tool)
+        
+        return pdf_tools
+
+    def load_credentials(self, path):
+        with open(path, "r") as stream:
+            return yaml.safe_load(stream)
+
     def reset_project(self):
         conversation_history = self.context.get('conversation_history', [])
-
         self.context = {
             'guidance': None,
             'gather_info': None,
@@ -46,49 +81,20 @@ class CrewAIChatbot:
             'safety_guidance': None,
             'conversation_history': conversation_history,
         }
-        
-    def load_credentials(self, path):
-        with open(path, "r") as stream:
-            return yaml.safe_load(stream)
 
     def load_scrape_tools(self, source_type):
         """Load scraping tools based on the specified source type (either 'websites' or 'tools')."""
         file_path = f"data/sites/{source_type}.yaml"
         with open(file_path, "r") as file:
             resources = yaml.safe_load(file)
-
-        scrape_tools = []
-        for resource in resources['resources']:
-            scrape_tools.append(ScrapeWebsiteTool(
-                website_url=resource['url'],
-                website_name=resource['name'],
-                website_description=resource['description']
-            ))
-        return scrape_tools
-
-
-    def load_pdf_tools(self):
-        pdf_tools = []
-        pdf_dir = "data/"
-        text_splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-        for filename in os.listdir(pdf_dir):
-            if filename.endswith(".pdf"):
-                pdf_path = os.path.join(pdf_dir, filename)
-                loader = PyPDFLoader(pdf_path)
-                documents = loader.load_and_split(text_splitter)
-                
-                # Limit the number of chunks to reduce token count
-                max_chunks = 5
-                limited_documents = documents[:max_chunks]
-                
-                pdf_tool = Tool(
-                    name=f"PDF_Reader_{filename}",
-                    func=lambda docs=limited_documents: "\n".join([doc.page_content for doc in docs]),
-                    description=f"Use this tool to read and extract information from the PDF file {filename}"
-                )
-                pdf_tools.append(pdf_tool)
-        return pdf_tools
-
+            scrape_tools = []
+            for resource in resources['resources']:
+                scrape_tools.append(ScrapeWebsiteTool(
+                    website_url=resource['url'],
+                    website_name=resource['name'],
+                    website_description=resource['description']
+                ))
+            return scrape_tools
     ##------------------------------------AGENTS------------------------------------
 
     def image_agent(self):
