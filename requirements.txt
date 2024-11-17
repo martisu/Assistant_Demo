@@ -15,6 +15,3 @@ tiktoken
 crewai==0.28.8
 crewai_tools==0.1.6
 duckduckgo-search
-llama-index-embeddings-azure-openai
-llama-index-llms-azure-openai
-llama-index

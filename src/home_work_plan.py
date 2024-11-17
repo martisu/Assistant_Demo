@@ -96,24 +96,6 @@ class CrewAIChatbot:
                 ))
             return scrape_tools
     ##------------------------------------AGENTS------------------------------------
-
-    def image_agent(self):
-        return Agent(
-            role='Damage Identifier',
-            goal='Identify and describe any visible damage or areas requiring repair in an uploaded image related to home improvement projects.',
-            tools=[self.image_recognition_tool],  # Ensure this tool is properly initialized elsewhere
-            verbose=True,
-            backstory=(
-                "You are an expert in analyzing images of home interiors and exteriors for damage or repair needs. "
-                "Your task is to examine the provided image and identify any parts that appear damaged, worn, or in need of repair. "
-                "Generate a concise, clear description of the identified issues, including the location (e.g., ceiling, wall) and nature "
-                "of the damage (e.g., cracks, water stains, loose tiles). "
-                "If no damage is visible, respond with 'No visible damage detected'. "
-                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
-            ),
-            llm=self.llm
-        )
-
     def relevance_checker_agent(self):
         return Agent(
             role='Relevance Checker and Redirector',
