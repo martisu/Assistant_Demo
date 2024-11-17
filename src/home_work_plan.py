@@ -70,7 +70,7 @@ class CrewAIChatbot:
         conversation_history = self.context.get('conversation_history', [])
         self.context = {
             'guidance': None,
-            'gather_info': None,
+            # 'gather_info': None,
             'current_project': None,
             'project_type': None,
             'materials': [],
@@ -153,7 +153,7 @@ class CrewAIChatbot:
         return Agent(
             role='Repair Expert',
             goal='Provide detailed guidance on home repair projects.',
-            tools=[self.search_tool] + self.load_scrape_tools("websites") + self.pdf_tools,
+            tools=[self.search_tool] + self.pdf_tools,
             verbose=True,
             backstory=(
                 "You are an experienced expert in home repairs. "
@@ -204,7 +204,7 @@ class CrewAIChatbot:
         return Agent(
             role='Tools Expert',
             goal='Based on the task context, provide a specific list of tools needed for the job.',
-            tools=[self.search_tool] + self.pdf_tools,
+            tools=[self.search_tool],
             verbose=True,
             backstory=(
             "You are an expert in selecting the right tools for specific construction tasks. "
@@ -217,7 +217,6 @@ class CrewAIChatbot:
             ),
             llm=self.llm
         )
-
     
     def cost_agent(self):
         return Agent(
@@ -273,7 +272,7 @@ class CrewAIChatbot:
         return Agent(
             role='Safety-Focused Task Guide',
             goal='Provide step-by-step instructions for tasks in a way that maximizes safety and minimizes the risk of accidents.',
-            tools=[self.search_tool] + self.pdf_tools,
+            tools=[self.search_tool],
             verbose=True,
             backstory=(
                 "You are a safety-focused expert responsible for guiding users through tasks with an emphasis on preventing accidents. "
@@ -387,11 +386,11 @@ class CrewAIChatbot:
 
     def materials_task(self, project_description):
         recent_history = self.context['conversation_history'][-50:]
-        gather_info = self.context['gather_info']
+        # gather_info = self.context['gather_info']
         return Task(
             description=f"Consider the conversation history: {recent_history}."
                         f"List the materials required for the following project: {project_description}. "
-                        f"Consider additional info in context: {gather_info}. "
+                        # f"Consider additional info in context: {gather_info}. "
                         f"The response should only contain the MATERIALS and must NOT include the TOOLS. "
                         f"Include alternatives where applicable. "
                         f"Analyze if there is enough information to perform the task and provide an appropriate response and make sure to know all relevant details"
@@ -413,12 +412,12 @@ class CrewAIChatbot:
 
     def tools_task(self, project_description):
         recent_history = self.context['conversation_history'][-50:]
-        gather_info = self.context['gather_info']
+        # gather_info = self.context['gather_info']
         materials = self.context['materials']
         return Task(
             description=f"Consider the conversation history: {recent_history}."
                         f"List the tools required for the following project: {project_description}. "
-                        f"Consider any additional information provided in context: {gather_info}. "
+                        # f"Consider any additional information provided in context: {gather_info}. "
                         f"Consider materials provided in context: {materials}. "
                         f"The response should only contain the TOOLS and must NOT include the MATERIALS. "
                         f"Analyze if there is enough information to perform the task effectively. Make sure to know all relevant details "
@@ -438,13 +437,13 @@ class CrewAIChatbot:
  
     def cost_estimation_task(self, materials_list):
         recent_history = self.context['conversation_history'][-50:]
-        gather_info = self.context['gather_info']
+        # gather_info = self.context['gather_info']
         materials = self.context['materials']
         tools = self.context['tools']
         return Task(
             description=f"Consider the conversation history: {recent_history}."
                         f"Provide a detailed cost estimation for the following materials: {materials_list}. "
-                        f"Consider any additional info provided in context: {gather_info}. "
+                        # f"Consider any additional info provided in context: {gather_info}. "
                         f"Consider materials provided in context: {materials}. "
                         f"Consider tools provided in context: {tools}. "
                         f"Include costs for alternatives where applicable. "
@@ -465,13 +464,13 @@ class CrewAIChatbot:
     
     def guide_task(self, repair_or_renovation_process):
         recent_history = self.context['conversation_history'][-50:]
-        gather_info = self.context['gather_info']
+        # gather_info = self.context['gather_info']
         materials = self.context['materials']
         tools = self.context['tools']
         return Task(
             description=f"Consider the conversation history: {recent_history}."
                         f"Provide detailed step-by-step instructions for the following repair or renovation process: {repair_or_renovation_process}. "
-                        f"Consider any additional info provided in context: {gather_info}. "
+                        # f"Consider any additional info provided in context: {gather_info}. "
                         f"Consider materials provided in context: {materials}. "
                         f"Consider tools provided in context: {tools}. "
                         f"Ensure that the steps are easy to follow and comprehensive, covering all necessary tools, materials, and safety precautions. "
@@ -493,14 +492,14 @@ class CrewAIChatbot:
     
     def contractor_search_task(self, project_description):
         recent_history = self.context['conversation_history'][-50:]
-        gather_info = self.context['gather_info']
+        # gather_info = self.context['gather_info']
         materials = self.context['materials']
         tools = self.context['tools']
         return Task(
             description=(
                 f"Consider the conversation history: {recent_history}."
                 f"Search for contractors who specialize in the following project in the specified location or nearby. "
-                f"Consider any additional info provided in context: {gather_info}. "
+                # f"Consider any additional info provided in context: {gather_info}. "
                 f"Consider materials provided in context: {materials}. "
                 f"Consider tools provided in context: {tools}. "
                 f"Provide contact details or links where the user can request a budget estimation. "
@@ -525,8 +524,8 @@ class CrewAIChatbot:
         )
 
     def safety_task(self, task_description):
-        recent_history = self.context['conversation_history'][-50:]
-        gather_info = self.context['gather_info']
+        recent_history = self.context['conversation_history'][-10:]
+        # gather_info = self.context['gather_info']
         materials = self.context['materials']
         tools = self.context['tools']
         step_by_step_guide = self.context['step_by_step_guide']
@@ -534,10 +533,10 @@ class CrewAIChatbot:
             description=(
                 f"Consider the conversation history: {recent_history}."
                 f"Provide a careful, safety-focused guide for the following task: {task_description}. "
-                f"The instructions should prioritize accident prevention by outlining each step in detail, highlighting any safety risks, "
+                f"The instructions should prioritize accident prevention by outlining each step in detail, highlighting any safety risks,"
                 f"and suggesting appropriate protective measures or precautions. Emphasize where extra caution is needed."
                 f"Consider the question of the user: {task_description}."
-                f"Consider additional info in context: {gather_info}. " 
+                # f"Consider additional info in context: {gather_info}. " 
                 f"Consider materials in context: {materials}. " 
                 f"Consider tools in context: {tools}. "
                 f"Consider step by step guide in context: {step_by_step_guide}. " 
@@ -546,18 +545,19 @@ class CrewAIChatbot:
             agent=self.safety_agent(),
             expected_output=(
                 "If more information from the user is required, answer 'question:' followed by the text asking for the missing information needed to provide a complete response in the language of the user."
-                "If no more information from the user is needed, answer with a step-by-step safety guide with specific cautions, e.g.,:\n\n"
-                "- **Step 1**: Identify the area where you will work and clear any obstacles.\n"
-                "  - **Safety Tip**: Ensure the floor is dry to avoid slips.\n"
-                "- **Step 2**: Gather necessary materials and wear protective gloves.\n"
-                "  - **Safety Tip**: Use gloves rated for chemical handling if using cleaning agents.\n"
+                "If no more information from the user is needed, respond with a concise step-by-step safety guide. Include the following considerations:\n"
+                "- Key steps to perform the task safely."
+                "- Specific risks associated with each step."
+                "- Protective measures to mitigate risks."
+                "- Areas where extra caution is needed."
+                "If additional information is required, respond with 'question:' followed by a clear request for the missing details."
                 "(Text indicating the missing information needed to provide a complete response, if necessary.)"
             )
         )
 
     def presentation_task(self, task_description):
         recent_history = self.context['conversation_history'][-50:]
-        gather_info = self.context['gather_info']
+        # gather_info = self.context['gather_info']
         materials = self.context['materials']
         tools = self.context['tools']
         step_by_step_guide = self.context['step_by_step_guide']
@@ -573,7 +573,7 @@ class CrewAIChatbot:
                 f"Ensure that the response is visually clear, well-organized, and presented in the user's language. "
                 f"If translation is necessary, adapt the response to the language detected in the user's question."
                 f"Consider the question of the user: {task_description}."
-                f"Consider additional info in context: {gather_info}. " 
+                # f"Consider additional info in context: {gather_info}. " 
                 f"Consider materials in context: {materials}. (Also missing ininformation if there is indicated)." 
                 f"Consider tools in context: {tools}. (Also missing ininformation if there is indicated)."
                 f"Consider step by step guide in context: {step_by_step_guide}. (Also missing ininformation if there is indicated)."
@@ -632,13 +632,13 @@ class CrewAIChatbot:
                         self.context['project_type'] = 'repair' if 'repair' in self.context['project_type'].lower() else 'renovation'
 
                     # Step 2: Provide guidance
-                    if result is None and self.context['gather_info'] is None:
-                        guidance_task = self.gather_all_information(question)
-                        guidance_crew = Crew(agents=[guidance_task.agent], tasks=[guidance_task], verbose=True)
-                        self.context['gather_info'] = guidance_crew.kickoff()
-                        if self.context['gather_info'].lower().startswith('question:'):
-                            result = self.context['gather_info'].split(':', 1)[1].strip()
-                            self.context['gather_info'] = None
+                    # if result is None and self.context['gather_info'] is None:
+                    #     guidance_task = self.gather_all_information(question)
+                    #     guidance_crew = Crew(agents=[guidance_task.agent], tasks=[guidance_task], verbose=True)
+                    #     self.context['gather_info'] = guidance_crew.kickoff()
+                    #     if self.context['gather_info'].lower().startswith('question:'):
+                    #         result = self.context['gather_info'].split(':', 1)[1].strip()
+                    #         self.context['gather_info'] = None
 
                     # Step 3: List materials
                     if result is None and not self.context['materials']:
