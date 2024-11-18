@@ -1,21 +1,57 @@
 from crewai import Agent, Task, Crew, Process
 from crewai_tools import PDFSearchTool
-from langchain_openai import ChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchRun
 from crewai_tools import ScrapeWebsiteTool
+from llama_index.llms.azure_openai import AzureOpenAI
+from llama_index.embeddings.azure_openai import AzureOpenAIEmbedding
+from langchain_openai import AzureChatOpenAI
 import yaml
 import os
+import logging
+import sys
 
 class CrewAIChatbot:
     def __init__(self, credentials_path):
-        self.credentials = self.load_credentials(credentials_path)
-        # Set OpenAI API key in environment variables
-        os.environ["OPENAI_API_KEY"] = self.credentials["OPENAI_API_KEY"]
+        # Set up logging
+        logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+        logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
         
-        self.llm = ChatOpenAI(
-            model_name="gpt-4",
-            openai_api_key=self.credentials["OPENAI_API_KEY"]
+        self.credentials = self.load_credentials(credentials_path)
+        
+        # Initialize Azure OpenAI configuration
+        self.azure_config = {
+            "api_key": self.credentials["api_key"],
+            "azure_endpoint": self.credentials["azure_endpoint"],
+            "api_version": self.credentials["api_version"],
+            "model": self.credentials["model"],
+            "model_embedding": self.credentials["model_embedding"]
+        }
+        
+        # Set up LangChain Azure OpenAI chat model
+        self.llm = AzureChatOpenAI(
+            deployment_name=self.azure_config["model"],
+            openai_api_version=self.azure_config["api_version"],
+            azure_endpoint=self.azure_config["azure_endpoint"],
+            openai_api_key=self.azure_config["api_key"]
         )
+        
+        # Set up LlamaIndex Azure OpenAI models
+        self.llama_llm = AzureOpenAI(
+            model=self.azure_config["model"],
+            deployment_name=self.azure_config["model"],
+            api_key=self.azure_config["api_key"],
+            azure_endpoint=self.azure_config["azure_endpoint"],
+            api_version=self.azure_config["api_version"]
+        )
+        
+        # Modified embedding model initialization
+        self.embed_model = AzureOpenAIEmbedding(
+            deployment_name=self.azure_config["model_embedding"],
+            api_key=self.azure_config["api_key"],
+            azure_endpoint=self.azure_config["azure_endpoint"],
+            api_version=self.azure_config["api_version"]
+        )
+        
         self.search_tool = DuckDuckGoSearchRun()
         self.pdf_tools = self.load_pdf_tools()
         
@@ -36,21 +72,20 @@ class CrewAIChatbot:
     def load_pdf_tools(self):
         pdf_tools = []
         pdf_dir = "data/"
-        
         tool_config = {
             "embedding_model": {
-                "provider": "openai",
+                "provider": "azure_openai",
                 "config": {
-                    "api_key": self.credentials["OPENAI_API_KEY"]
+                    "azure_api_key": self.azure_config["api_key"],  # Changed from api_key
+                    "azure_endpoint": self.azure_config["azure_endpoint"],  # Changed from api_base
+                    "azure_deployment": self.azure_config["model_embedding"],  # Changed from deployment_name
+                    "api_version": self.azure_config["api_version"]
                 }
             }
         }
-        
         for filename in os.listdir(pdf_dir):
             if filename.endswith(".pdf"):
                 pdf_path = os.path.join(pdf_dir, filename)
-                
-                # Create PDFSearchTool with configuration
                 pdf_tool = PDFSearchTool(
                     file_path=pdf_path,
                     name=f"PDF_Reader_{filename}",
@@ -59,7 +94,6 @@ class CrewAIChatbot:
                     config=tool_config
                 )
                 pdf_tools.append(pdf_tool)
-        
         return pdf_tools
 
     def load_credentials(self, path):
@@ -714,5 +748,7 @@ class CrewAIChatbot:
         except Exception as e:
             return f"Perdón, encontré un error al buscar una solución: {str(e)}"
         
+
+
 
 
