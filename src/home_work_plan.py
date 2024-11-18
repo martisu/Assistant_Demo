@@ -1,6 +1,8 @@
 from crewai import Agent, Task, Crew, Process
 from crewai_tools import PDFSearchTool
-from langchain_openai import ChatOpenAI
+#from langchain_openai import ChatOpenAI
+from langchain_openai.chat_models.azure import AzureChatOpenAI
+from langchain.chat_models import ChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchRun
 from crewai_tools import ScrapeWebsiteTool
 import yaml
@@ -9,12 +11,20 @@ import os
 class CrewAIChatbot:
     def __init__(self, credentials_path):
         self.credentials = self.load_credentials(credentials_path)
+
         # Set OpenAI API key in environment variables
-        os.environ["OPENAI_API_KEY"] = self.credentials["OPENAI_API_KEY"]
+        os.environ["AZURE_API_KEY"] = self.credentials["AZURE_API_KEY"]
+        os.environ["AZURE_API_BASE"] = self.credentials["AZURE_ENDPOINT"]
+        os.environ["AZURE_API_VERSION"] = self.credentials["AZURE_API_VERSION"]
         
-        self.llm = ChatOpenAI(
-            model_name="gpt-4",
-            openai_api_key=self.credentials["OPENAI_API_KEY"]
+        self.llm = AzureChatOpenAI(
+            deployment_name=self.credentials["MODEL_NAME"], 
+            openai_api_key=os.environ["AZURE_API_KEY"],
+            azure_endpoint=os.environ["AZURE_API_BASE"], 
+            openai_api_version=os.environ["AZURE_API_VERSION"],
+            openai_api_type="azure", 
+            temperature=0.1
+
         )
         self.search_tool = DuckDuckGoSearchRun()
         self.pdf_tools = self.load_pdf_tools()
@@ -39,9 +49,12 @@ class CrewAIChatbot:
         
         tool_config = {
             "embedding_model": {
-                "provider": "openai",
+                "provider": "azure_openai",
                 "config": {
-                    "api_key": self.credentials["OPENAI_API_KEY"]
+                    "api_key": os.environ.get("AZURE_API_KEY"),
+                    "azure_endpoint": os.environ.get("AZURE_API_BASE"),
+                    "deployment_name": self.credentials.get("MODEL_EMBEDDING", "text-embedding-ada-002"),
+                    "api_version": os.environ.get("AZURE_API_VERSION")  
                 }
             }
         }
@@ -49,17 +62,19 @@ class CrewAIChatbot:
         for filename in os.listdir(pdf_dir):
             if filename.endswith(".pdf"):
                 pdf_path = os.path.join(pdf_dir, filename)
-                
-                # Create PDFSearchTool with configuration
-                pdf_tool = PDFSearchTool(
-                    file_path=pdf_path,
-                    name=f"PDF_Reader_{filename}",
-                    description=f"Use this tool to search and extract information from the PDF file {filename}",
-                    max_chunks=5,
-                    config=tool_config
-                )
-                pdf_tools.append(pdf_tool)
-        
+                try:
+                    # Create PDFSearchTool with configuration
+                    pdf_tool = PDFSearchTool(
+                        file_path=pdf_path,
+                        name=f"PDF_Reader_{filename}",
+                        description=f"Use this tool to search and extract information from the PDF file {filename}",
+                        max_chunks=5,
+                        config=tool_config
+                    )
+                    pdf_tools.append(pdf_tool)
+                except Exception as e:
+                    print(f"Failed to load PDF tool for {filename}: {e}")
+
         return pdf_tools
 
     def load_credentials(self, path):
