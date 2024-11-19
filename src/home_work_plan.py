@@ -1,6 +1,3 @@
-# Warning control
-import warnings
-warnings.filterwarnings('ignore')
 
 from crewai import Agent, Task, Crew
 from langchain_community.document_loaders import PyPDFLoader
