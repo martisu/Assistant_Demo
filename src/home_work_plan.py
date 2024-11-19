@@ -1,8 +1,12 @@
-from crewai import Agent, Task, Crew, Process
-from crewai_tools import PDFSearchTool
-#from langchain_openai import ChatOpenAI
+# Warning control
+import warnings
+warnings.filterwarnings('ignore')
+
+from crewai import Agent, Task, Crew
+from langchain_community.document_loaders import PyPDFLoader
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.tools import Tool
 from langchain_openai.chat_models.azure import AzureChatOpenAI
-from langchain.chat_models import ChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchRun
 from crewai_tools import ScrapeWebsiteTool
 import yaml
@@ -49,35 +53,22 @@ class CrewAIChatbot:
     def load_pdf_tools(self):
         pdf_tools = []
         pdf_dir = "data/"
-        
-        tool_config = {
-            "embedding_model": {
-                "provider": "azure_openai",
-                "config": {
-                    "api_key": os.environ.get("AZURE_API_KEY"),
-                    "azure_endpoint": os.environ.get("AZURE_API_BASE"),
-                    "deployment_name": self.credentials.get("MODEL_EMBEDDING", "text-embedding-ada-002"),
-                    "api_version": os.environ.get("AZURE_API_VERSION")  
-                }
-            }
-        }
-        
+        text_splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
         for filename in os.listdir(pdf_dir):
             if filename.endswith(".pdf"):
                 pdf_path = os.path.join(pdf_dir, filename)
-                try:
-                    # Create PDFSearchTool with configuration
-                    pdf_tool = PDFSearchTool(
-                        file_path=pdf_path,
-                        name=f"PDF_Reader_{filename}",
-                        description=f"Use this tool to search and extract information from the PDF file {filename}",
-                        max_chunks=5,
-                        config=tool_config
-                    )
-                    pdf_tools.append(pdf_tool)
-                except Exception as e:
-                    print(f"Failed to load PDF tool for {filename}: {e}")
-
+                loader = PyPDFLoader(pdf_path)
+                documents = loader.load_and_split(text_splitter)
+                
+                max_chunks = 5
+                limited_documents = documents[:max_chunks]
+                
+                pdf_tool = Tool(
+                    name=f"PDF_Reader_{filename}",
+                    func=lambda docs=limited_documents: "\n".join([doc.page_content for doc in docs]),
+                    description=f"Use this tool to read and extract information from the PDF file {filename}"
+                )
+                pdf_tools.append(pdf_tool)
         return pdf_tools
 
     def load_credentials(self, path):
@@ -148,24 +139,7 @@ class CrewAIChatbot:
             llm=self.llm
         )
     
-    def image_description_agent(self):
-        return Agent(
-            role='Damage Identifier',
-            goal='Identify and describe any visible damage or areas requiring repair in an uploaded image related to home improvement projects.',
-            tools=[self.image_recognition_tool],
-            verbose=True,
-            backstory=(
-                "You are an expert in analyzing images of home interiors and exteriors for damage or repair needs. "
-                "Your task is to examine the provided image and identify any parts that appear damaged, worn, or in need of repair. "
-                "Generate a concise, clear description of the identified issues, including the location (e.g., ceiling, wall) and nature "
-                "of the damage (e.g., cracks, water stains, loose tiles)."
-                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
-                "If you cannot detect any visible damage, simply respond with 'No visible damage detected'. "
-                "Use one to two sentences for each description to ensure clarity and brevity."
-            ),
-            llm=self.llm
-        )
-
+   
 
     def repair_agent(self):
         return Agent(
@@ -341,29 +315,6 @@ class CrewAIChatbot:
             agent=self.relevance_checker_agent(),
             expected_output="A decision of 'RELATED: ' or 'NOT RELATED: ' followed by an appropriate response."
         )
-    
-    def image_description_task(self, image=None):
-        """
-        Task for analyzing an uploaded image. If no image is provided, the task skips analysis.
-        """
-        if image:
-            return Task(
-                description=(
-                    "Examine the provided image and generate a detailed description of any visible damage or areas requiring repair. "
-                    "The description should include the specific location (e.g., ceiling, wall) and nature of the damage (e.g., cracks, water stains, loose tiles). "
-                    "If no damage is detected, respond with 'No visible damage detected'."
-                ),
-                agent=self.image_agent(),
-                input=image,
-                expected_output=(
-                    "A concise description of the damaged areas or issues in the image, e.g.,:\n\n"
-                    "- 'The ceiling shows water stains and cracks, likely due to leakage.'\n"
-                    "- 'Several tiles on the floor are loose and may need replacement.'"
-                )
-            )
-        else:
-            return None  # No image provided, skip the task
-
 
     def planificator_task(self, question):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
