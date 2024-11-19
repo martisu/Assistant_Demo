@@ -9,6 +9,9 @@ import yaml
 import os
 
 class CrewAIChatbot:
+
+    HISTORY_LIMIT = 60  # Length of the history to consider
+
     def __init__(self, credentials_path):
         self.credentials = self.load_credentials(credentials_path)
 
@@ -205,6 +208,7 @@ class CrewAIChatbot:
             verbose=True,
             backstory=(
                 "You are an experienced expert in construction. "
+                "You are an expert in forecasting materials and determining the required quantity of each material, provided the user's instructions are sufficient."
                 "Your role is to provide detailed advice on materials used for various projects. "
                 "Create a list using markdown that includes the materials and their alternatives. "
                 "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
@@ -308,7 +312,7 @@ class CrewAIChatbot:
             tools=[],  # No external tools are required for presentation composition
             verbose=True,
             backstory=(
-                "You are a presentation expert responsible for assembling and presenting all relevant project information "
+                "You are a presentation expert responsible for assembling and presenting all project information "
                 "in a clear and structured format. Your role is to create a coherent response that includes project guidance, "
                 "required materials, tools, cost estimation, step-by-step guide, and recommended contractors. "
                 "Ensure the response is understandable, visually organized, and presented in the user's language."
@@ -320,7 +324,7 @@ class CrewAIChatbot:
 ##------------------------------------TASKS------------------------------------
 
     def check_relevance_task(self, question):
-        recent_history = self.context['conversation_history'][-50:]
+        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         history_str = "\n".join([f"{entry['role']}: {entry['content']}" for entry in recent_history])
 
         return Task(
@@ -362,7 +366,7 @@ class CrewAIChatbot:
 
 
     def planificator_task(self, question):
-        recent_history = self.context['conversation_history'][-50:]
+        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         return Task(
             description=f"Consider the conversation history: {recent_history}."
                         f"Classify the following home improvement project: {question}. "
@@ -372,7 +376,7 @@ class CrewAIChatbot:
         )
 
     def gather_all_information(self, question):
-        recent_history = self.context['conversation_history'][-50:]
+        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         project_type = self.context['project_type']
         agent = self.repair_agent() if project_type == 'repair' else self.renovation_agent()
         return Task(
@@ -400,7 +404,7 @@ class CrewAIChatbot:
 
 
     def materials_task(self, project_description):
-        recent_history = self.context['conversation_history'][-50:]
+        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         # gather_info = self.context['gather_info']
         return Task(
             description=f"Consider the conversation history: {recent_history}."
@@ -415,7 +419,7 @@ class CrewAIChatbot:
                 "If more information from the user is required, answer 'question:' followed by a clear and specific question in the language of the user. For example:\n"
                 "- 'What type of materials would you prefer for this project?'\n"
                 "- 'What is the size or scope of the project to estimate the quantity of materials needed?'\n"
-                "If no more information from the user is needed, answer with a markdown list of materials with quantities and alternatives, e.g.:\n\n"
+                "If no more information from the user is needed, answer with a markdown list of materials, including the estimated required quantities and alternatives, e.g.:\n\n"
                 "- **Material 1**: High-quality cement\n"
                 "  - Quantity: 10 kg\n"
                 "  - Alternative: Eco-friendly cement (8 kg)\n"
@@ -426,7 +430,7 @@ class CrewAIChatbot:
     )
 
     def tools_task(self, project_description):
-        recent_history = self.context['conversation_history'][-50:]
+        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         # gather_info = self.context['gather_info']
         materials = self.context['materials']
         return Task(
@@ -451,7 +455,7 @@ class CrewAIChatbot:
     )
  
     def cost_estimation_task(self, materials_list):
-        recent_history = self.context['conversation_history'][-50:]
+        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         # gather_info = self.context['gather_info']
         materials = self.context['materials']
         tools = self.context['tools']
@@ -478,7 +482,7 @@ class CrewAIChatbot:
         )
     
     def guide_task(self, repair_or_renovation_process):
-        recent_history = self.context['conversation_history'][-50:]
+        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         # gather_info = self.context['gather_info']
         materials = self.context['materials']
         tools = self.context['tools']
@@ -506,7 +510,7 @@ class CrewAIChatbot:
         )
     
     def contractor_search_task(self, project_description):
-        recent_history = self.context['conversation_history'][-50:]
+        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         # gather_info = self.context['gather_info']
         materials = self.context['materials']
         tools = self.context['tools']
@@ -571,7 +575,7 @@ class CrewAIChatbot:
         )
 
     def presentation_task(self, task_description):
-        recent_history = self.context['conversation_history'][-50:]
+        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         # gather_info = self.context['gather_info']
         materials = self.context['materials']
         tools = self.context['tools']
@@ -598,20 +602,16 @@ class CrewAIChatbot:
             ),
             agent=self.presentation_agent(),
             expected_output=(
-                "If all information is complete, provide a structured response that includes the following:\n"
+                " Use the language of the user and provide a structured and elegant response in markdown format, organizing all information clearly under distinct headings.\n"
+                " Must be displayed in a table if this is convenient.\n"
+                " Response must include all the following information:\n"
                 "- Materials.\n"
                 "- Tools.\n"
                 "- Step by step guide.\n"
-                "- Contractors information.\n"
+                "- Contractors with all available information (name, contact details, etc.)."
                 "- Cost estimation.\n"
                 "- Safty guidance notes.\n"
                 "- Questions asking for missing information if there is missing informationor.\n"
-                "\n"
-                "If information is missing, respond with a list of specific clarifying questions for the user to complete the missing details.\n"
-                "For example:\n"
-                "- What materials are required for the project?\n"
-                "- What tools are necessary to complete the job?\n"
-                "- Provide a step-by-step guide for the task.\n"
             )
         )
 
