@@ -11,7 +11,7 @@ import os
 
 class CrewAIChatbot:
 
-    HISTORY_LIMIT = 60  # Length of the history to consider
+    HISTORY_LIMIT = 10  # Length of the history to consider
 
     def __init__(self, credentials_path):
         self.credentials = self.load_credentials(credentials_path)
@@ -207,16 +207,17 @@ class CrewAIChatbot:
     def cost_agent(self):
         return Agent(
             role='Cost Determinator',
-            goal='Provide cost estimations for materials, considering the user’s location and preferred currency.',
+            goal='Based on the list of materials, provide a table with the costs.',
             tools=[self.search_tool],
             verbose=True,
             backstory=(
                 "You are a cost expert in construction. "
-                "Your role is to provide cost estimations for materials or tools, converting them into the currency based on the user's location. "
-                "Default to euros (€) if the user’s location is not specified. "
-                "Perform a targeted search for pricing data and ensure clarity in the response. "
-                "Provide approximate unit prices in the user’s currency or a specified currency. "
-                "Avoid including unrelated context or general market trends."
+                "Your role is to provide detailed cost estimations for materials used. "
+                "Create a list using markdown that includes the costs of each material and their alternatives. "
+                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
+                "Analyze if there is enough information to perform the task. "
+                "Respond using the currency of the user's location if specified; otherwise, default to euros."
+
             ),
             llm=self.llm
         )
@@ -413,29 +414,28 @@ class CrewAIChatbot:
     )
  
     def cost_estimation_task(self, materials_list):
-        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
+        recent_history = self.context['conversation_history'][-50:]
+        # gather_info = self.context['gather_info']
         materials = self.context['materials']
         tools = self.context['tools']
-        location = self.context.get('user_location', 'Europe')  
-        currency = self.context.get('currency', '€')  
-
         return Task(
-            description=(
-                f"Consider the conversation history: {recent_history}."
-                f"Provide a cost estimation for the following materials: {materials_list}. "
-                f"Use the user's location ({location}) to determine the appropriate currency ({currency}). "
-                f"If the user's location is unknown, default to providing costs in euros (€). "
-                f"Focus on direct price information (e.g., price per unit) and avoid providing unrelated context or market trends. "
-                f"Respond in markdown table format for clarity, showing costs in the relevant currency. "
-                f"Analyze if there is enough information to perform the task. If not, generate a specific question to ask the user for more details."
-            ),
+            description=f"Consider the conversation history: {recent_history}."
+                        f"Provide a detailed cost estimation for the following materials: {materials_list}. "
+                        f"Consider materials provided in context: {materials}. "
+                        f"Consider tools provided in context: {tools}. "
+                        f"Include costs for alternatives where applicable. "
+                        f"Analyze if there is enough information to perform the task. Make sure to know all relevant details "
+                        f"If key information is missing, generate a specific question to ask the user to gather the necessary details.",
             agent=self.cost_agent(),
             expected_output=(
-                "If more information from the user is required, answer 'question:' followed by a specific question in the user's language.\n"
-                "If enough information is provided, respond with a markdown table of costs, including the currency. For example:\n\n"
-                "| Material        | Cost (in {currency})  | Alternatives                       |\n"
-                "|----------------|----------------------|------------------------------------|\n"
-                "| Paint          | 15 €/liter          | Eco-paint (20 €/liter)             |\n"
+                "If more information from the user is required, answer 'question:' followed by a clear and specific question in the language of the user. For example:\n"
+                "- 'Could you specify the type or quality of materials for accurate cost estimation?'\n"
+                "- 'Do you have a budget range for each material or tool?'\n"
+                "If no additional information from the user is needed, answer with a markdown table listing materials and their costs, including alternatives, e.g.:\n\n"
+                "| Material        | Cost  | Alternatives                       |\n"
+                "|----------------|-------|------------------------------------|\n"
+                "| Material 1     | $10   | Alternative 1 ($8), Alt 2 ($12)   |\n"
+                "| Material 2     | $15   | Alternative 1 ($12), Alt 2 ($18)  |\n"
             )
         )
 
