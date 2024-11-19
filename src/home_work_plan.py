@@ -136,8 +136,6 @@ class CrewAIChatbot:
             llm=self.llm
         )
     
-   
-
     def repair_agent(self):
         return Agent(
             role='Repair Expert',
@@ -211,20 +209,20 @@ class CrewAIChatbot:
     def cost_agent(self):
         return Agent(
             role='Cost Determinator',
-            goal='Based on the list of materials, provide a table with the costs.',
+            goal='Provide cost estimations for materials, considering the user’s location and preferred currency.',
             tools=[self.search_tool],
             verbose=True,
             backstory=(
                 "You are a cost expert in construction. "
-                "Your role is to provide detailed cost estimations for materials used. "
-                "Create a list using markdown that includes the costs of each material and their alternatives. "
-                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
-                "Analyze if there is enough information to perform the task. "
-                "Respond using the currency of the user's location if specified; otherwise, default to euros."
-
+                "Your role is to provide cost estimations for materials or tools, converting them into the currency based on the user's location. "
+                "Default to euros (€) if the user’s location is not specified. "
+                "Perform a targeted search for pricing data and ensure clarity in the response. "
+                "Provide approximate unit prices in the user’s currency or a specified currency. "
+                "Avoid including unrelated context or general market trends."
             ),
             llm=self.llm
         )
+    
     def guide_agent(self):
         return Agent(
             role='Step-by-Step Guide',
@@ -275,6 +273,24 @@ class CrewAIChatbot:
             ),
             llm=self.llm
         )
+    
+    def scheduler_agent(self):
+        return Agent(
+            role='Project Scheduler',
+            goal='Create a detailed schedule for home improvement projects based on user-provided constraints and priorities.',
+            tools=[],
+            verbose=True,
+            backstory=(
+                "You are a project scheduling expert with experience in construction and home improvement tasks. "
+                "Your task is to organize project steps into a logical order and assign estimated durations. "
+                "Take into account task dependencies, resource availability, and deadlines provided by the user. "
+                "If constraints or resources are unclear, ask specific questions to clarify. "
+                "Always ensure the schedule is realistic, and recommend adjustments if necessary to meet deadlines. "
+                "Present the schedule in a structured markdown table or a clear step-by-step format."
+            ),
+            llm=self.llm
+        )
+
 
     def presentation_agent(self):
         return Agent(
@@ -404,30 +420,31 @@ class CrewAIChatbot:
  
     def cost_estimation_task(self, materials_list):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        # gather_info = self.context['gather_info']
         materials = self.context['materials']
         tools = self.context['tools']
+        location = self.context.get('user_location', 'Europe')  
+        currency = self.context.get('currency', '€')  
+
         return Task(
-            description=f"Consider the conversation history: {recent_history}."
-                        f"Provide a detailed cost estimation for the following materials: {materials_list}. "
-                        # f"Consider any additional info provided in context: {gather_info}. "
-                        f"Consider materials provided in context: {materials}. "
-                        f"Consider tools provided in context: {tools}. "
-                        f"Include costs for alternatives where applicable. "
-                        f"Analyze if there is enough information to perform the task. Make sure to know all relevant details "
-                        f"If key information is missing, generate a specific question to ask the user to gather the necessary details.",
+            description=(
+                f"Consider the conversation history: {recent_history}."
+                f"Provide a cost estimation for the following materials: {materials_list}. "
+                f"Use the user's location ({location}) to determine the appropriate currency ({currency}). "
+                f"If the user's location is unknown, default to providing costs in euros (€). "
+                f"Focus on direct price information (e.g., price per unit) and avoid providing unrelated context or market trends. "
+                f"Respond in markdown table format for clarity, showing costs in the relevant currency. "
+                f"Analyze if there is enough information to perform the task. If not, generate a specific question to ask the user for more details."
+            ),
             agent=self.cost_agent(),
             expected_output=(
-                "If more information from the user is required, answer 'question:' followed by a clear and specific question in the language of the user. For example:\n"
-                "- 'Could you specify the type or quality of materials for accurate cost estimation?'\n"
-                "- 'Do you have a budget range for each material or tool?'\n"
-                "If no additional information from the user is needed, answer with a markdown table listing materials and their costs, including alternatives, e.g.:\n\n"
-                "| Material        | Cost  | Alternatives                       |\n"
-                "|----------------|-------|------------------------------------|\n"
-                "| Material 1     | $10   | Alternative 1 ($8), Alt 2 ($12)   |\n"
-                "| Material 2     | $15   | Alternative 1 ($12), Alt 2 ($18)  |\n"
+                "If more information from the user is required, answer 'question:' followed by a specific question in the user's language.\n"
+                "If enough information is provided, respond with a markdown table of costs, including the currency. For example:\n\n"
+                "| Material        | Cost (in {currency})  | Alternatives                       |\n"
+                "|----------------|----------------------|------------------------------------|\n"
+                "| Paint          | 15 €/liter          | Eco-paint (20 €/liter)             |\n"
             )
         )
+
     
     def guide_task(self, repair_or_renovation_process):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
@@ -487,7 +504,6 @@ class CrewAIChatbot:
             "  - Contact: (987) 654-3210\n"
             "  - Website: [www.homefixpros.com](http://www.homefixpros.com)\n"
             )
-#            human_input=True
         )
 
     def safety_task(self, task_description):
@@ -521,53 +537,88 @@ class CrewAIChatbot:
                 "(Text indicating the missing information needed to provide a complete response, if necessary.)"
             )
         )
+    def scheduling_task(self, project_description, deadline=None):
+        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
+        materials = self.context['materials']
+        tools = self.context['tools']
+        step_by_step_guide = self.context['step_by_step_guide']
+
+        return Task(
+            description=(
+                f"Consider the conversation history: {recent_history}."
+                f"Create a detailed schedule for the following project: {project_description}. "
+                f"Base the schedule on the following: \n"
+                f"- Materials provided: {materials}\n"
+                f"- Tools provided: {tools}\n"
+                f"- Step-by-step guide: {step_by_step_guide}\n"
+                f"Include realistic durations for each step. "
+                f"If a deadline is specified ({deadline}), prioritize steps to ensure completion by that date. "
+                f"Clearly outline task dependencies and critical path steps. "
+                f"If any details are missing, generate a specific question to ask the user for clarification."
+            ),
+            agent=self.scheduler_agent(),
+            expected_output=(
+                "If more information is required, respond with 'question:' followed by the missing details.\n"
+                "If enough information is provided, return a detailed schedule in markdown format. Example:\n\n"
+                "| Task                | Duration | Start Date  | End Date    | Dependencies |\n"
+                "|---------------------|----------|-------------|-------------|--------------|\n"
+                "| Gather Materials    | 2 days   | Nov 20, 2024| Nov 21, 2024| None         |\n"
+                "| Prep Work Area      | 1 day    | Nov 22, 2024| Nov 22, 2024| Gather Materials |\n"
+                "| Perform Repairs     | 3 days   | Nov 23, 2024| Nov 25, 2024| Prep Work Area |\n\n"
+                "If the project cannot be completed by the specified deadline, suggest possible adjustments."
+            )
+        )
+
+
 
     def presentation_task(self, task_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        # gather_info = self.context['gather_info']
         materials = self.context['materials']
         tools = self.context['tools']
         step_by_step_guide = self.context['step_by_step_guide']
         contractors = self.context['contractors']
         cost_estimation = self.context['cost_estimation']
         safety_guidance = self.context['safety_guidance']
+        schedule = self.context.get('schedule')  # Add the schedule to the context
 
         return Task(
             description=(
                 f"Consider the conversation history: {recent_history}."
                 f"Compose a final, well-structured response with the collected project details based on the user's question."
-                f"Include project guidance, required materials, tools, cost estimation, step-by-step guide, and recommended contractors. "
+                f"Include project guidance, required materials, tools, cost estimation, step-by-step guide, recommended contractors, "
+                f"safety guidance notes, and the project schedule. "
                 f"Ensure that the response is visually clear, well-organized, and presented in the user's language. "
                 f"If translation is necessary, adapt the response to the language detected in the user's question."
                 f"Consider the question of the user: {task_description}."
-                # f"Consider additional info in context: {gather_info}. " 
-                f"Consider materials in context: {materials}. (Also missing ininformation if there is indicated)." 
-                f"Consider tools in context: {tools}. (Also missing ininformation if there is indicated)."
-                f"Consider step by step guide in context: {step_by_step_guide}. (Also missing ininformation if there is indicated)."
-                f"Consider contractors in context: {contractors}. (Also missing ininformation if there is indicated)."
-                f"Consider cost estimation in context: {cost_estimation}. (Also missing ininformation if there is indicated)."
-                f"Consider safty guidance notes in context: {safety_guidance}. (Also missing ininformation if there is indicated)."
+                f"Consider materials in context: {materials}. (Also missing information if there is indicated)." 
+                f"Consider tools in context: {tools}. (Also missing information if there is indicated)."
+                f"Consider step by step guide in context: {step_by_step_guide}. (Also missing information if there is indicated)."
+                f"Consider contractors in context: {contractors}. (Also missing information if there is indicated)."
+                f"Consider cost estimation in context: {cost_estimation}. (Also missing information if there is indicated)."
+                f"Consider safety guidance notes in context: {safety_guidance}. (Also missing information if there is indicated)."
+                f"Consider the schedule in context: {schedule}. (Also missing information if there is indicated)."
             ),
             agent=self.presentation_agent(),
             expected_output=(
-                " Use the language of the user and provide a structured and elegant response in markdown format, organizing all information clearly under distinct headings.\n"
-                " Must be displayed in a table if this is convenient.\n"
-                " Response must include all the following information:\n"
+                "Use the language of the user and provide a structured and elegant response in markdown format, organizing all information clearly under distinct headings.\n"
+                "Must be displayed in a table if this is convenient.\n"
+                "Response must include all the following information:\n"
                 "- Materials.\n"
                 "- Tools.\n"
                 "- Step by step guide.\n"
-                "- Contractors with all available information (name, contact details, etc.)."
+                "- Contractors with all available information (name, contact details, etc.).\n"
                 "- Cost estimation.\n"
-                "- Safty guidance notes.\n"
-                "- Questions asking for missing information if there is missing informationor.\n"
+                "- Safety guidance notes.\n"
+                "- Project schedule with clear timelines and dependencies.\n"
+                "- Questions asking for missing information if there is any.\n"
             )
         )
+
 
     ##------------------------------------CREATE CREW------------------------------------
 
     def get_response(self, question):
         try:
-            result = None
             self.context['conversation_history'].append({"role": "user", "content": question})
 
             # Step 0: Check relevance
@@ -580,102 +631,54 @@ class CrewAIChatbot:
             relevance_result = relevance_crew.kickoff()
 
             if relevance_result.lower().startswith('not related:'):
-                result = relevance_result.split(':', 1)[1].strip()
-            else:
-                    # Step 1: Classify the project (only if not already defined)
-                    if self.context['project_type'] is None or self.context['project_type'] == 'undefined':
-                        classification_task = self.planificator_task(question)
-                        classification_crew = Crew(
-                            agents=[classification_task.agent],
-                            tasks=[classification_task],
-                            verbose=True
-                        )
-                        self.context['project_type'] = classification_crew.kickoff()
-                    
-                        self.context['project_type'] = 'repair' if 'repair' in self.context['project_type'].lower() else 'renovation'
+                return relevance_result.split(':', 1)[1].strip()
 
-                    # Step 2: Provide guidance
-                    # if result is None and self.context['gather_info'] is None:
-                    #     guidance_task = self.gather_all_information(question)
-                    #     guidance_crew = Crew(agents=[guidance_task.agent], tasks=[guidance_task], verbose=True)
-                    #     self.context['gather_info'] = guidance_crew.kickoff()
-                    #     if self.context['gather_info'].lower().startswith('question:'):
-                    #         result = self.context['gather_info'].split(':', 1)[1].strip()
-                    #         self.context['gather_info'] = None
+            # Step 1: Classify project type if undefined
+            if not self.context['project_type']:
+                classification_task = self.planificator_task(question)
+                classification_crew = Crew(
+                    agents=[classification_task.agent],
+                    tasks=[classification_task],
+                    verbose=True
+                )
+                project_type_result = classification_crew.kickoff()
+                self.context['project_type'] = 'repair' if 'repair' in project_type_result.lower() else 'renovation'
 
-                    # Step 3: List materials
-                    if result is None and not self.context['materials']:
-                        materials_task = self.materials_task(question)
-                        materials_crew = Crew(agents=[materials_task.agent], tasks=[materials_task], verbose=True)
-                        self.context['materials'] = materials_crew.kickoff()
-                        if self.context['materials'].lower().startswith('question:'):
-                            result = self.context['materials'].split(':', 1)[1].strip()
-                            self.context['materials'] = []
+            # Sequentially process tasks
+            sequential_tasks = [
+                (self.materials_task, 'materials'),
+                (self.tools_task, 'tools'),
+                (self.cost_estimation_task, 'cost_estimation'),
+                (self.guide_task, 'step_by_step_guide'),
+                (self.contractor_search_task, 'contractors'),
+                (self.safety_task, 'safety_guidance'),
+                (self.scheduling_task, 'schedule')  # Add the scheduler here
+            ]
 
-                    # Step 4: List tools
-                    if result is None and not self.context['tools']:
-                        tools_task = self.tools_task(question)
-                        tools_crew = Crew(agents=[tools_task.agent], tasks=[tools_task], verbose=True)
-                        self.context['tools'] = tools_crew.kickoff()
-                        if self.context['tools'].lower().startswith('question:'):
-                            result = self.context['tools'].split(':', 1)[1].strip()
-                            self.context['tools'] = []
+            for task_method, context_key in sequential_tasks:
+                if not self.context.get(context_key):
+                    task = task_method(question)
+                    crew = Crew(agents=[task.agent], tasks=[task], verbose=True)
+                    result = crew.kickoff()
 
-                    # Step 5: Cost estimation
-                    if result is None and self.context['cost_estimation'] is None:
-                        cost_task = self.cost_estimation_task(question)
-                        cost_crew = Crew(agents=[cost_task.agent], tasks=[cost_task], verbose=True)
-                        self.context['cost_estimation'] = cost_crew.kickoff()
-                        if self.context['cost_estimation'].lower().startswith('question:'):
-                            result = self.context['cost_estimation'].split(':', 1)[1].strip()
-                            self.context['cost_estimation'] = None
+                    if result.lower().startswith('question:'):
+                        return result.split(':', 1)[1].strip()
+                    self.context[context_key] = result
 
+            # Step 8: Presentation
+            presentation_task = self.presentation_task(question)
+            presentation_crew = Crew(agents=[presentation_task.agent], tasks=[presentation_task], verbose=True)
+            final_result = presentation_crew.kickoff()
 
-                    # Step 6: Step-by-step guidance
-                    if result is None and self.context['step_by_step_guide'] is None:
-                        guide_task = self.guide_task(question)
-                        guide_crew = Crew(agents=[guide_task.agent], tasks=[guide_task], verbose=True)
-                        self.context['step_by_step_guide'] = guide_crew.kickoff()
-                        if self.context['step_by_step_guide'].lower().startswith('question:'):
-                            result = self.context['step_by_step_guide'].split(':', 1)[1].strip()
-                            self.context['step_by_step_guide'] = None
+            # Reset project after response
+            self.reset_project()
 
-                    # Step 7: Contractor search
-                    if result is None and not self.context['contractors']:
-                        contractor_task = self.contractor_search_task(question) 
-                        contractor_crew = Crew(agents=[contractor_task.agent], tasks=[contractor_task], verbose=True)
-                        self.context['contractors'] = contractor_crew.kickoff()
-                        if self.context['contractors'].lower().startswith('question:'):
-                            result = self.context['contractors'].split(':', 1)[1].strip()
-                            self.context['contractors'] = []
+            # Add final response to conversation history
+            self.context['conversation_history'].append({"role": "assistant", "content": final_result})
 
+            return final_result
 
-                    # Step 8: Safety guidance
-                    if result is None and self.context['safety_guidance'] is None:
-                        safety_task = self.safety_task(question)
-                        safety_crew = Crew(agents=[safety_task.agent], tasks=[safety_task], verbose=True)
-                        self.context['safety_guidance'] = safety_crew.kickoff()
-                        if self.context['safety_guidance'].lower().startswith('question:'):
-                            result = self.context['safety_guidance'].split(':', 1)[1].strip()
-                            self.context['safety_guidance'] = None
-
-                    # Presentation
-                    if result is None:
-                        presentation_task = self.presentation_task(question)
-                        presentation_crew = Crew(agents=[presentation_task.agent], tasks=[presentation_task], verbose=True)
-                        result = presentation_crew.kickoff()
-
-                        # Reset project
-                        self.reset_project()
-
-            self.context['conversation_history'].append({"role": "assistant", "content": result})
-
-            return result
-        
         except AttributeError as e:
-            return f"Lo siento, parece que hay un problema con una de las herramientas o atributos: {str(e)}"
+            return f"Sorry, there was an issue with one of the tools or attributes: {str(e)}"
         except Exception as e:
-            return f"Perdón, encontré un error al buscar una solución: {str(e)}"
-        
-
-
+            return f"An error occurred while processing your request: {str(e)}"
