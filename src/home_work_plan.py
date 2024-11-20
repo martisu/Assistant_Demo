@@ -11,7 +11,7 @@ import os
 
 class CrewAIChatbot:
 
-    HISTORY_LIMIT = 10  # Length of the history to consider
+    HISTORY_LIMIT = 20  # Length of the history to consider
 
     def __init__(self, credentials_path):
         self.credentials = self.load_credentials(credentials_path)
@@ -126,19 +126,22 @@ class CrewAIChatbot:
                 "You are an expert in classifying home improvement projects. "
                 "Your task is to determine if a project is a **repair** (fixing or restoring something damaged), "
                 "a **renovation** (improving or modernizing an existing feature), or **undefined** if it's not clear. "
-                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
+                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise. "
                 "If you can't determine the type, classify it as 'undefined'. "
-                "Use a maximum of one line per response to keep it concise."
-                "Always respond in the language of the user. "
+                "Ask for relevant details about the project to assist classification, such as dimensions, location of the project, "
+                "wanted materials, or budget. "
+                "Use a maximum of one line per response to keep it concise. "
+                "Always respond in the language of the user."
             ),
             llm=self.llm
         )
+
     
     def repair_agent(self):
         return Agent(
             role='Repair Expert',
             goal='Provide detailed guidance on home repair projects.',
-            tools=[self.search_tool] + self.pdf_tools,
+            tools=[self.search_tool],
             verbose=True,
             backstory=(
                 "You are an experienced expert in home repairs. "
@@ -226,7 +229,7 @@ class CrewAIChatbot:
         return Agent(
             role='Step-by-Step Guide',
             goal='Provide detailed step-by-step instructions for any task.',
-            tools=[self.search_tool],
+            tools=[self.search_tool] + self.pdf_tools,
             verbose=True,
             backstory=(
                 "You are an expert guide. Your role is to break down complex tasks into clear, manageable steps."
@@ -497,7 +500,7 @@ class CrewAIChatbot:
         )
 
     def safety_task(self, task_description):
-        recent_history = self.context['conversation_history'][-10:]
+        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         materials = self.context['materials']
         tools = self.context['tools']
         step_by_step_guide = self.context['step_by_step_guide']
@@ -533,29 +536,31 @@ class CrewAIChatbot:
 
         return Task(
             description=(
-                f"Consider the conversation history: {recent_history}."
-                f"Create a detailed schedule for the following project: {project_description}. "
-                f"Base the schedule on the following: \n"
+                f"Using the conversation history: {recent_history}, "
+                f"create a schedule for the project: {project_description}. "
+                f"Base the schedule on the following inputs:\n"
                 f"- Materials provided: {materials}\n"
                 f"- Tools provided: {tools}\n"
                 f"- Step-by-step guide: {step_by_step_guide}\n"
-                f"Include realistic durations for each step. "
-                f"If a deadline is specified ({deadline}), prioritize steps to ensure completion by that date. "
-                f"Clearly outline task dependencies and critical path steps. "
-                f"If any details are missing, generate a specific question to ask the user for clarification."
+                f"Provide a table with:\n"
+                f"- Task\n"
+                f"- Duration\n"
+                f"- Recommended number of people\n"
+                f"If a deadline is specified ({deadline}), prioritize tasks to meet it."
             ),
             agent=self.scheduler_agent(),
             expected_output=(
-                "If more information is required, respond with 'question:' followed by the missing details.\n"
-                "If enough information is provided, return a detailed schedule in markdown format. Example:\n\n"
-                "| Task                | Duration | Start Date  | End Date    | Dependencies |\n"
-                "|---------------------|----------|-------------|-------------|--------------|\n"
-                "| Gather Materials    | 2 days   | Nov 20, 2024| Nov 21, 2024| None         |\n"
-                "| Prep Work Area      | 1 day    | Nov 22, 2024| Nov 22, 2024| Gather Materials |\n"
-                "| Perform Repairs     | 3 days   | Nov 23, 2024| Nov 25, 2024| Prep Work Area |\n\n"
-                "If the project cannot be completed by the specified deadline, suggest possible adjustments."
+                "If more information is needed, respond with 'question:' followed by the missing details.\n"
+                "If sufficient information is provided, return a detailed schedule in markdown format. Example:\n\n"
+                "| Task                | Duration | Recommended People |\n"
+                "|---------------------|----------|--------------------|\n"
+                "| Gather Materials    | 2 days   | 3                  |\n"
+                "| Prep Work Area      | 1 day    | 2                  |\n"
+                "| Perform Repairs     | 3 days   | 4                  |\n\n"
+                "If the project cannot be completed by the deadline, suggest adjustments."
             )
         )
+
 
 
 
