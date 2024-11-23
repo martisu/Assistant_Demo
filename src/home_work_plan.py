@@ -1,17 +1,20 @@
 
-from crewai import Agent, Task, Crew
+from crewai import Agent, Task, Crew, Process
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.tools import Tool
 from langchain_openai.chat_models.azure import AzureChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchRun
+from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
+
+
 from crewai_tools import ScrapeWebsiteTool
 import yaml
 import os
 
 class CrewAIChatbot:
 
-    HISTORY_LIMIT = 20  # Length of the history to consider
+    HISTORY_LIMIT = 30  # Length of the history to consider
 
     def __init__(self, credentials_path):
         self.credentials = self.load_credentials(credentials_path)
@@ -30,7 +33,8 @@ class CrewAIChatbot:
             temperature=0.1
 
         )
-        self.search_tool = DuckDuckGoSearchRun(maxResults=2 )
+        self.wrapper = DuckDuckGoSearchAPIWrapper(max_results=2 )
+        self.search_tool = DuckDuckGoSearchRun(api_wrapper =self.wrapper, source = "text", backend = "lite" )
         self.pdf_tools = self.load_pdf_tools()
         
         self.context = {
@@ -67,35 +71,60 @@ class CrewAIChatbot:
                 pdf_tools.append(pdf_tool)
         return pdf_tools
     
-    def search_section(self, section_name, domain_suffix=None):
+    def cost_search(self, country_filter="Spain"):
         """
-        Search within a specific section of the YAML file and optionally append a domain suffix to URLs.
+        Search within the 'Costs' section of the YAML file and filter by country if provided.
+        Falls back to direct DuckDuckGo search if country not in YAML.
+        
+        Args:
+            country_filter (str, optional): The country to limit the search to (e.g., 'Spain').
+        
+        Returns:
             dict: A dictionary of URLs and their respective search results or an error message.
         """
         try:
-            with open("data/sites/web_search.yaml", "r") as file:
+            # Step 1: Load YAML Data
+            with open("data/sites/cost.yaml", "r") as file:
                 data = yaml.safe_load(file)
             
-            section_urls = data.get(section_name, [])
+            # Step 2: Check if country exists in YAML
+            available_countries = [entry.get("country") for entry in data]
             
-            if not section_urls:
-                return f"No URLs found in the '{section_name}' section of the YAML file."
+            # If country not in YAML, do direct DuckDuckGo search
+            if country_filter not in available_countries:
+                query = f"construction materials cost prices {country_filter} hardware store building supplies"
+                direct_result = self.search_tool.run(query)
+                return {
+                    "direct_search": {
+                        "country": country_filter,
+                        "search_type": "direct",
+                        "results": direct_result
+                    }
+                }
             
+            # Step 3: Filter by country if it exists in YAML
+            costs_data = [entry for entry in data if entry.get("country") == country_filter]
+            
+            # Step 4: Extract links from the section
             search_results = {}
-            for url in section_urls:
-                if domain_suffix:
-                    query = f"site:{url}{domain_suffix}"  
-                else:
-                    query = f"site:{url}"  
-                
-                
-                result = self.search_tool.run(query)
-                search_results[url] = result  
-                
+            for entry in costs_data:
+                country = entry.get("country")
+                stores = entry.get("stores", [])
+                for store in stores:
+                    name = store.get("name")
+                    link = store.get("link")
+                    if link:
+                        # Perform the search
+                        query = f"site:{link}"  # Restrict search to the specific store link
+                        result = self.search_tool.run(query)
+                        search_results[f"{country} - {name}"] = result
+            
+            # Return the search results
             return search_results
 
         except Exception as e:
             return f"Error occurred: {str(e)}"
+
 
 
     def load_credentials(self, path):
@@ -135,7 +164,7 @@ class CrewAIChatbot:
         return Agent(
             role='Relevance Checker and Redirector',
             goal='Determine if a query is related to home improvement projects and provide a helpful response.',
-            tools=[self.search_tool],
+            tools=[],
             verbose=True,
             backstory=(
                 "You are an expert in home improvement projects with excellent communication skills. "
@@ -151,7 +180,7 @@ class CrewAIChatbot:
         return Agent(
             role='Project Classifier',
             goal='Classify whether a home improvement project is a repair, a renovation, or undefined.',
-            tools=[self.search_tool],
+            tools=[],
             verbose=True,
             backstory=(
                 "You are an expert in classifying home improvement projects. "
@@ -241,17 +270,16 @@ class CrewAIChatbot:
     def cost_agent(self):
         return Agent(
             role='Cost Determinator',
-            goal='Based on the list of materials, provide a table with the costs.',
+            goal='Provide cost estimations for materials, considering the user’s location and preferred currency.',
             tools=[self.search_tool],
             verbose=True,
             backstory=(
                 "You are a cost expert in construction. "
-                "Your role is to provide detailed cost estimations for materials used. "
-                "Create a list using markdown that includes the costs of each material and their alternatives. "
-                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
-                "Analyze if there is enough information to perform the task. "
-                "Respond using the currency of the user's location if specified; otherwise, default to euros."
-
+                "Your role is to provide cost estimations for materials or tools, converting them into the currency based on the user's location. "
+                "Default to euros (€) if the user’s location is not specified. "
+                "Perform a targeted search for pricing data and ensure clarity in the response. "
+                "Provide approximate unit prices in the user’s currency or a specified currency. "
+                "Avoid including unrelated context or general market trends."
             ),
             llm=self.llm
         )
@@ -448,28 +476,37 @@ class CrewAIChatbot:
     )
  
     def cost_estimation_task(self, materials_list):
-        recent_history = self.context['conversation_history'][-50:]
-        # gather_info = self.context['gather_info']
+        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         materials = self.context['materials']
         tools = self.context['tools']
+        location = self.context.get('user_location', 'Europe')
+        currency = self.context.get('currency', '€')
+
+        # Define reference markets based on location context or general applicability
+        markets = (
+            "Leroy Merlin, Castorama, OBI, Bricofer, Home Depot, Home Depot Mexico, "
+            "and similar stores based on the user's location."
+        )
+
         return Task(
-            description=f"Consider the conversation history: {recent_history}."
-                        f"Provide a detailed cost estimation for the following materials: {materials_list}. "
-                        f"Consider materials provided in context: {materials}. "
-                        f"Consider tools provided in context: {tools}. "
-                        f"Include costs for alternatives where applicable. "
-                        f"Analyze if there is enough information to perform the task. Make sure to know all relevant details "
-                        f"If key information is missing, generate a specific question to ask the user to gather the necessary details.",
+            description=(
+                f"Consider the conversation history: {recent_history}.\n"
+                f"Provide a cost estimation for the following materials: {materials_list}.\n"
+                f"Consider materials provided in context: {materials}.\n"
+                f"Consider tools provided in context: {tools}.\n"
+                f"Use the user's location ({location}) to determine the appropriate markets ({markets}) and currency ({currency}).\n"
+                f"If the user's location is unknown, default to providing costs in euros (€).\n"
+                f"Focus on direct price information (e.g., price per unit) and avoid providing unrelated context or market trends.\n"
+                f"Respond in markdown table format for clarity, showing costs in the relevant currency.\n"
+                f"Analyze if there is enough information to perform the task. If not, generate a specific question to ask the user for more details."
+            ),
             agent=self.cost_agent(),
             expected_output=(
-                "If more information from the user is required, answer 'question:' followed by a clear and specific question in the language of the user. For example:\n"
-                "- 'Could you specify the type or quality of materials for accurate cost estimation?'\n"
-                "- 'Do you have a budget range for each material or tool?'\n"
-                "If no additional information from the user is needed, answer with a markdown table listing materials and their costs, including alternatives, e.g.:\n\n"
-                "| Material        | Cost  | Alternatives                       |\n"
-                "|----------------|-------|------------------------------------|\n"
-                "| Material 1     | $10   | Alternative 1 ($8), Alt 2 ($12)   |\n"
-                "| Material 2     | $15   | Alternative 1 ($12), Alt 2 ($18)  |\n"
+                "If more information from the user is required, answer 'question:' followed by a specific question in the user's language.\n"
+                "If enough information is provided, respond with a markdown table of costs, referencing the relevant markets and using the appropriate currency. For example:\n\n"
+                "| Material        | Cost (in {currency})  | Alternatives                       |\n"
+                "|----------------|----------------------|------------------------------------|\n"
+                "| Paint          | 15 €/liter          | Eco-paint (20 €/liter)             |\n"
             )
         )
 
