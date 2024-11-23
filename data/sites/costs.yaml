@@ -1,0 +1,78 @@
+- country: Spain
+  stores:
+    - name: Leroy Merlin
+      link: https://www.leroymerlin.es/
+    - name: Bricomart (Obramat)
+      link: https://www.obramat.es/
+- country: France
+  stores:
+    - name: Castorama
+      link: https://www.castorama.fr/
+    - name: Brico Dépôt
+      link: https://www.bricodepot.fr/
+- country: Germany
+  stores:
+    - name: OBI
+      link: https://www.obi.de/
+    - name: Bauhaus
+      link: https://www.bauhaus.info/
+- country: United Kingdom
+  stores:
+    - name: B&Q
+      link: https://www.diy.com/
+    - name: Wickes
+      link: https://www.wickes.co.uk/
+- country: Italy
+  stores:
+    - name: Bricofer
+      link: https://www.bricofer.it/
+    - name: Leroy Merlin Italy
+      link: https://www.leroymerlin.it/
+- country: Netherlands
+  stores:
+    - name: Gamma
+      link: https://www.gamma.nl/
+    - name: Praxis
+      link: https://www.praxis.nl/
+- country: Poland
+  stores:
+    - name: Castorama Poland
+      link: https://www.castorama.pl/
+    - name: Leroy Merlin Poland
+      link: https://www.leroymerlin.pl/
+- country: United States
+  stores:
+    - name: Home Depot
+      link: https://www.homedepot.com/
+    - name: Lowe’s
+      link: https://www.lowes.com/
+- country: Canada
+  stores:
+    - name: Rona
+      link: https://www.rona.ca/en
+    - name: Home Hardware
+      link: https://www.homehardware.ca/
+- country: Mexico
+  stores:
+    - name: Home Depot Mexico
+      link: https://www.homedepot.com.mx/
+    - name: Construrama
+      link: https://www.construrama.com/
+- country: Colombia
+  stores:
+    - name: Homecenter (Sodimac)
+      link: https://www.homecenter.com.co/
+    - name: Construrama Colombia
+      link: https://www.construramacolombia.com/
+- country: Brazil
+  stores:
+    - name: Telhanorte
+      link: https://www.telhanorte.com.br/
+    - name: Leroy Merlin Brazil
+      link: https://www.leroymerlin.com.br/
+- country: Argentina
+  stores:
+    - name: Easy Argentina
+      link: https://www.easy.com.ar/
+    - name: Sodimac Argentina
+      link: https://www.sodimac.com.ar/x
