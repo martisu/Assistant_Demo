@@ -30,7 +30,7 @@ class CrewAIChatbot:
             temperature=0.1
 
         )
-        self.search_tool = DuckDuckGoSearchRun()
+        self.search_tool = DuckDuckGoSearchRun(maxResults=2 )
         self.pdf_tools = self.load_pdf_tools()
         
         self.context = {
@@ -66,6 +66,37 @@ class CrewAIChatbot:
                 )
                 pdf_tools.append(pdf_tool)
         return pdf_tools
+    
+    def search_section(self, section_name, domain_suffix=None):
+        """
+        Search within a specific section of the YAML file and optionally append a domain suffix to URLs.
+            dict: A dictionary of URLs and their respective search results or an error message.
+        """
+        try:
+            with open("data/sites/web_search.yaml", "r") as file:
+                data = yaml.safe_load(file)
+            
+            section_urls = data.get(section_name, [])
+            
+            if not section_urls:
+                return f"No URLs found in the '{section_name}' section of the YAML file."
+            
+            search_results = {}
+            for url in section_urls:
+                if domain_suffix:
+                    query = f"site:{url}{domain_suffix}"  
+                else:
+                    query = f"site:{url}"  
+                
+                
+                result = self.search_tool.run(query)
+                search_results[url] = result  
+                
+            return search_results
+
+        except Exception as e:
+            return f"Error occurred: {str(e)}"
+
 
     def load_credentials(self, path):
         with open(path, "r") as stream:
