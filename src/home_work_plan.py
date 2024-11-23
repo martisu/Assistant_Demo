@@ -160,7 +160,7 @@ class CrewAIChatbot:
                 ))
             return scrape_tools
     ##------------------------------------AGENTS------------------------------------
-    def relevance_checker_agent(self):
+    def relevance_agent(self):
         return Agent(
             role='Relevance Checker and Redirector',
             goal='Determine if a query is related to home improvement projects and provide a helpful response.',
@@ -188,13 +188,31 @@ class CrewAIChatbot:
                 "a **renovation** (improving or modernizing an existing feature), or **undefined** if it's not clear. "
                 "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise. "
                 "If you can't determine the type, classify it as 'undefined'. "
-                "Ask for relevant details about the project to assist classification, such as dimensions, location of the project, "
-                "wanted materials, or budget. "
                 "Use a maximum of one line per response to keep it concise. "
                 "Always respond in the language of the user."
             ),
             llm=self.llm
         )
+    
+    def questions_agent(self):
+        return Agent(
+            role='Information Gathering Specialist',
+            goal='Ask targeted questions to collect all necessary details for a home improvement project.',
+            tools=[],
+            verbose=True,
+            backstory=(
+                "Your role is to gather all relevant information from the user to ensure the project is clearly defined and well-prepared. "
+                "Focus on understanding the project scope, location, size, budget, materials, tools, and timeline. "
+                "Your inquiries should be clear, concise, and phrased in a professional yet approachable tone. "
+                "If the user doesn’t have certain details or resources (e.g., materials or tools), offer reassurance and let them know assistance will be provided in later stages. "
+                "Always tailor your questions to the specific project type—repair or renovation—and adjust based on the information already provided by the user. "
+                "Ensure your questions are practical and directly support the planning and execution of the project."
+            ),
+            llm=self.llm
+        )
+
+
+
 
     
     def repair_agent(self):
@@ -386,7 +404,7 @@ class CrewAIChatbot:
                 f"3. Suggests a related home improvement topic they might be interested in\n"
                 f"Ensure your response is in the same language as the user's query."
             ),
-            agent=self.relevance_checker_agent(),
+            agent=self.relevance_agent(),
             expected_output="A decision of 'RELATED: ' or 'NOT RELATED: ' followed by an appropriate response."
         )
 
@@ -400,33 +418,32 @@ class CrewAIChatbot:
             expected_output="Project classified as 'repair', 'renovation', or 'undefined'."
         )
 
-    def gather_all_information(self, question):
+    def questions_task(self, question):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         project_type = self.context['project_type']
-        agent = self.repair_agent() if project_type == 'repair' else self.renovation_agent()
         return Task(
             description=(
-                f"Consider the conversation history: {recent_history}."
-                f"Based on the project type ({project_type}) and the user's question '{question}', assemble a comprehensive guide. "
-                f"Analyze the provided question and context to determine if additional information is required from the user to create a complete project guide. Make sure to know all relevant details."
-                f"If additional information is needed, specify it clearly by starting your response with 'question:'."
-
+                f"Analyze the recent conversation history: {recent_history}, the project type ({project_type}), "
+                f"and the user's question '{question}'. Your task is to gather all missing details needed to fully define the project. "
+                "Based on the context and user input, determine which details are still unclear or incomplete. "
+                "Ask specific, clear, and professional questions to fill these gaps, ensuring the user feels supported throughout the process. "
+                "Adapt your questions to the project type—repair or renovation—and prioritize gathering details such as:\n"
+                "- The dimensions or size of the project area.\n"
+                "- The location of the project (e.g., indoor or outdoor, city for contractors).\n"
+                "- The budget and material preferences (economical, premium, or sustainable).\n"
+                "- Whether the user has any tools or materials available to use.\n"
+                "- The desired timeline and urgency of the project.\n"
+                "If the user lacks certain information, offer reassurance, and frame your questions in a way that keeps the process collaborative and stress-free."
             ),
-            agent=agent,
+            agent=self.questions_agent(),
             expected_output=(
-                "If more information from the user is required, answer 'question:' followed by a clear and specific question in the language of the user. For example:\n"
-                "- 'What is the size of the area to be repaired?'\n"
-                "- 'What type of materials would you like to use for the renovation?'\n"
-                "If no additional information is needed, provide a detailed project guide including:\n"
-                "- Clear, step-by-step instructions from preparation to completion.\n"
-                "- A list of all materials and tools required, specifying quantities and alternatives if needed.\n"
-                "- Estimated project timeline with stages, highlighting potential delays or complex steps.\n"
-                "- A breakdown of costs, including material, tools, and any recommended professional help.\n"
-                "- Essential safety tips and precautions tailored to the project type.\n"
-                "- Optional recommendations for design, quality assurance tips, and environmentally friendly practices."
+                "If additional information is needed, start your response with 'question:' followed by specific and user-friendly questions. Examples include:\n"
+                "- 'What are the dimensions of the area to be worked on?'\n"
+                "- 'Do you already have some materials or tools available for this project? If not, no problem—I can assist with recommendations.'\n"
+                "- 'What is your budget range for this project?'\n"
+                "If no additional information is needed, confirm with the user that the details are complete, and summarize the gathered information for clarity."
             )
         )
-
 
     def materials_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
@@ -449,7 +466,8 @@ class CrewAIChatbot:
                 "- **Material 2**: Paint (white)\n"
                 "  - Quantity: 2 liters\n"
                 "  - Alternative: Matte finish paint (2 liters)\n"
-            )
+            ),
+            async_execution=True
     )
 
     def tools_task(self, project_description):
@@ -472,7 +490,8 @@ class CrewAIChatbot:
                 "  - Alternative: Manual drill\n"
                 "- **Tool 2**: Screwdriver (Phillips)\n"
                 "  - Alternative: Flathead screwdriver\n"
-            )
+            ),
+            async_execution=True
     )
  
     def cost_estimation_task(self, materials_list):
@@ -564,7 +583,8 @@ class CrewAIChatbot:
             "- **Contractor 2**: Home Fix Pros\n"
             "  - Contact: (987) 654-3210\n"
             "  - Website: [www.homefixpros.com](http://www.homefixpros.com)\n"
-            )
+            ),
+            async_execution=True
         )
 
     def safety_task(self, task_description):
@@ -681,7 +701,8 @@ class CrewAIChatbot:
     def get_response(self, question):
         try:
             self.context['conversation_history'].append({"role": "user", "content": question})
-
+            
+            
             # Step 0: Check relevance
             relevance_task = self.check_relevance_task(question)
             relevance_crew = Crew(
@@ -704,6 +725,7 @@ class CrewAIChatbot:
                 )
                 project_type_result = classification_crew.kickoff()
                 self.context['project_type'] = 'repair' if 'repair' in project_type_result.lower() else 'renovation'
+
 
             # Sequentially process tasks
             sequential_tasks = [
