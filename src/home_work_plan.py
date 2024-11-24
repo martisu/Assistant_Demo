@@ -410,40 +410,36 @@ class CrewAIChatbot:
 
     def planificator_task(self, question):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
+        previous_relevance = self.context.get('relevance_decision', None)
+
         return Task(
-            description=f"Consider the conversation history: {recent_history}."
-                        f"Classify the following home improvement project: {question}. "
-                        f"Determine if it's a repair, renovation, or if it's unclear (undefined).",
+            description=(
+                f"Consider the conversation history: {recent_history}.\n"
+                f"Evaluate the user's query ({question}) and, if previously classified as related ({previous_relevance}), "
+                f"categorize the home improvement project as a 'repair', 'renovation', or 'undefined'.\n"
+                f"Adapt to previous context and user queries to refine your classification."
+            ),
             agent=self.planificator_agent(),
             expected_output="Project classified as 'repair', 'renovation', or 'undefined'."
         )
 
+
     def questions_task(self, question):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         project_type = self.context['project_type']
+
         return Task(
             description=(
-                f"Analyze the recent conversation history: {recent_history}, the project type ({project_type}), "
-                f"and the user's question '{question}'. Your task is to gather all missing details needed to fully define the project. "
-                "Based on the context and user input, determine which details are still unclear or incomplete. "
-                "Ask specific, clear, and professional questions to fill these gaps, ensuring the user feels supported throughout the process. "
-                "Adapt your questions to the project type—repair or renovation—and prioritize gathering details such as:\n"
-                "- The dimensions or size of the project area.\n"
-                "- The location of the project (e.g., indoor or outdoor, city for contractors).\n"
-                "- The budget and material preferences (economical, premium, or sustainable).\n"
-                "- Whether the user has any tools or materials available to use.\n"
-                "- The desired timeline and urgency of the project.\n"
-                "If the user lacks certain information, offer reassurance, and frame your questions in a way that keeps the process collaborative and stress-free."
+                f"Analyze the conversation history ({recent_history}), the project type ({project_type}), "
+                f"and the user's question ({question}).\n"
+                f"Identify any missing project details and ask clear questions to gather complete information, tailored to the project type."
             ),
             agent=self.questions_agent(),
             expected_output=(
-                "If additional information is needed, start your response with 'question:' followed by specific and user-friendly questions. Examples include:\n"
-                "- 'What are the dimensions of the area to be worked on?'\n"
-                "- 'Do you already have some materials or tools available for this project? If not, no problem—I can assist with recommendations.'\n"
-                "- 'What is your budget range for this project?'\n"
-                "If no additional information is needed, confirm with the user that the details are complete, and summarize the gathered information for clarity."
+                "Specific follow-up questions or confirmation of completeness, adapting to user needs."
             )
         )
+
 
     def materials_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
@@ -527,6 +523,7 @@ class CrewAIChatbot:
                 "|----------------|----------------------|------------------------------------|\n"
                 "| Paint          | 15 €/liter          | Eco-paint (20 €/liter)             |\n"
             )
+
         )
 
     
@@ -556,20 +553,13 @@ class CrewAIChatbot:
             )
         )
     
-    def contractor_search_task(self, project_description):
+    def contractor_search_task(self):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        materials = self.context['materials']
-        tools = self.context['tools']
         return Task(
             description=(
                 f"Consider the conversation history: {recent_history}."
-                f"Search for contractors who specialize in the following project in the specified location or nearby. "
-                f"Consider materials provided in context: {materials}. "
-                f"Consider tools provided in context: {tools}. "
-                f"Provide contact details or links where the user can request a budget estimation. "
+                f"Search for contractors (two references) who specialize in the following project in the specified location or nearby. "
                 f"Ensure the contractors are well-reviewed or reputable, if possible. "
-                f"Analyze if there is enough information to perform the task, including location details. Make sure to know all relevant details."
-                f"If key information is missing, generate a specific question to ask the user to gather the necessary details."
             ),
             agent=self.contractor_search_agent(),
             expected_output=(
@@ -589,9 +579,6 @@ class CrewAIChatbot:
 
     def safety_task(self, task_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        materials = self.context['materials']
-        tools = self.context['tools']
-        step_by_step_guide = self.context['step_by_step_guide']
         return Task(
             description=(
                 f"Consider the conversation history: {recent_history}."
@@ -599,9 +586,6 @@ class CrewAIChatbot:
                 f"The instructions should prioritize accident prevention by outlining each step in detail, highlighting any safety risks,"
                 f"and suggesting appropriate protective measures or precautions. Emphasize where extra caution is needed."
                 f"Consider the question of the user: {task_description}."
-                f"Consider materials in context: {materials}. " 
-                f"Consider tools in context: {tools}. "
-                f"Consider step by step guide in context: {step_by_step_guide}. " 
                 f"Analyze if there is enough information to perform the task. Make sure to know all relevant details."
             ),
             agent=self.safety_agent(),
@@ -618,8 +602,6 @@ class CrewAIChatbot:
         )
     def scheduling_task(self, project_description, deadline=None):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        materials = self.context['materials']
-        tools = self.context['tools']
         step_by_step_guide = self.context['step_by_step_guide']
 
         return Task(
@@ -627,8 +609,6 @@ class CrewAIChatbot:
                 f"Using the conversation history: {recent_history}, "
                 f"create a schedule for the project: {project_description}. "
                 f"Base the schedule on the following inputs:\n"
-                f"- Materials provided: {materials}\n"
-                f"- Tools provided: {tools}\n"
                 f"- Step-by-step guide: {step_by_step_guide}\n"
                 f"Provide a table with:\n"
                 f"- Task\n"
@@ -648,8 +628,6 @@ class CrewAIChatbot:
                 "If the project cannot be completed by the deadline, suggest adjustments."
             )
         )
-
-
 
 
     def presentation_task(self, task_description):
@@ -701,8 +679,7 @@ class CrewAIChatbot:
     def get_response(self, question):
         try:
             self.context['conversation_history'].append({"role": "user", "content": question})
-            
-            
+
             # Step 0: Check relevance
             relevance_task = self.check_relevance_task(question)
             relevance_crew = Crew(
@@ -725,7 +702,6 @@ class CrewAIChatbot:
                 )
                 project_type_result = classification_crew.kickoff()
                 self.context['project_type'] = 'repair' if 'repair' in project_type_result.lower() else 'renovation'
-
 
             # Sequentially process tasks
             sequential_tasks = [
