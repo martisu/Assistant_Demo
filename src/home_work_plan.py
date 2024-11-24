@@ -228,6 +228,7 @@ class CrewAIChatbot:
                 "Acknowledge user responses dynamically and use them to adapt your follow-up questions. For instance, if the user provides dimensions, thank them and ask about budget next. "
                 "Ensure your inquiries are clear, concise, and phrased in a professional yet approachable tone. "
                 "If the user doesn’t have certain details, offer reassurance, and explain how you can help later in the process."
+                "Always respond in the language of the user."
             ),
             llm=self.llm
         )
@@ -436,12 +437,25 @@ class CrewAIChatbot:
         )
 
     def questions_task(self, question):
-        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        project_type = self.context['project_type']
+        # Function to sanitize input and prevent flagged terms
+        def sanitize_text(text):
+            restricted_terms = ["bypass", "hack", "exploit", "jailbreak"]
+            for term in restricted_terms:
+                text = text.replace(term, "[restricted]")
+            return text
+
+        # Sanitize inputs and history
+        recent_history = [
+            sanitize_text(entry["content"]) for entry in self.context["conversation_history"][-self.HISTORY_LIMIT:]
+        ]
+        sanitized_question = sanitize_text(question)
+        project_type = self.context["project_type"]
+
+        # Define the task
         return Task(
             description=(
-                f"Analyze the recent conversation history: {recent_history}, the project type ({project_type}), "
-                f"and the user's question '{question}'. Your task is to gather all missing details needed to fully define the project. "
+                f"Analyze the sanitized conversation history: {recent_history}, the project type ({project_type}), "
+                f"and the user's question '{sanitized_question}'. Your task is to gather all missing details needed to fully define the project. "
                 "Based on the context and user input, determine which details are still unclear or incomplete. "
                 "Ask specific, clear, and professional questions to fill these gaps, ensuring the user feels supported throughout the process. "
                 "Adapt your questions to the project type—repair or renovation—and prioritize gathering details such as:\n"
@@ -464,7 +478,6 @@ class CrewAIChatbot:
                 "- 'Here's a quick summary of what I understand: [summary]. Let me know if I missed anything!'"
             )
         )
-
 
     def materials_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
@@ -584,26 +597,26 @@ class CrewAIChatbot:
         return Task(
             description=(
                 f"Consider the conversation history: {recent_history}."
-                f"Search for contractors who specialize in the following project in the specified location or nearby. "
+                f"Search for a maximum of two contractors who specialize in the following project in the specified location or nearby. "
                 f"Consider materials provided in context: {materials}. "
                 f"Consider tools provided in context: {tools}. "
                 f"Provide contact details or links where the user can request a budget estimation. "
                 f"Ensure the contractors are well-reviewed or reputable, if possible. "
-                f"Analyze if there is enough information to perform the task, including location details. Make sure to know all relevant details."
+                f"Analyze if there is enough information to perform the task, including location details. Make sure to know all relevant details. "
                 f"If key information is missing, generate a specific question to ask the user to gather the necessary details."
             ),
             agent=self.contractor_search_agent(),
             expected_output=(
-            "If more information from the user is required, answer 'question:' followed by a clear and specific question in the language of the user. For example:\n"
-            "- 'Could you specify the location for the project so I can find local contractors?'\n"
-            "- 'Are there any specific requirements or certifications needed for the contractors?'\n"
-            "If no additional information from the user is needed, answer with a list of contractors with their contact information or website links, including details on how to request a budget estimation. For example:\n\n"
-            "- **Contractor 1**: ABC Renovations\n"
-            "  - Contact: (123) 456-7890\n"
-            "  - Website: [www.abcrenovations.com](http://www.abcrenovations.com)\n"
-            "- **Contractor 2**: Home Fix Pros\n"
-            "  - Contact: (987) 654-3210\n"
-            "  - Website: [www.homefixpros.com](http://www.homefixpros.com)\n"
+                "If more information from the user is required, answer 'question:' followed by a clear and specific question in the language of the user. For example:\n"
+                "- 'Could you specify the location for the project so I can find local contractors?'\n"
+                "- 'Are there any specific requirements or certifications needed for the contractors?'\n"
+                "If no additional information from the user is needed, answer with a list of up to two contractors with their contact information or website links, including details on how to request a budget estimation. For example:\n\n"
+                "- **Contractor 1**: ABC Renovations\n"
+                "  - Contact: (123) 456-7890\n"
+                "  - Website: [www.abcrenovations.com](http://www.abcrenovations.com)\n"
+                "- **Contractor 2**: Home Fix Pros\n"
+                "  - Contact: (987) 654-3210\n"
+                "  - Website: [www.homefixpros.com](http://www.homefixpros.com)\n"
             )
         )
 
