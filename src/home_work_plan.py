@@ -35,7 +35,7 @@ class CrewAIChatbot:
         )
         self.wrapper = DuckDuckGoSearchAPIWrapper(max_results=2 )
         self.search_tool = DuckDuckGoSearchRun(api_wrapper =self.wrapper, source = "text", backend = "lite" )
-        self.pdf_tools = self.load_pdf_tools()
+        # self.pdf_tools = self.load_pdf_tools()
         
         self.context = {
             'guidance': None,
@@ -50,49 +50,49 @@ class CrewAIChatbot:
             'conversation_history': []
         }
 
-    def load_pdf_tools(self):
-        pdf_tools = []
-        pdf_dir = "data/"
-        text_splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    # def load_pdf_tools(self):
+    #     pdf_tools = []
+    #     pdf_dir = "data/"
+    #     text_splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
         
-        for filename in os.listdir(pdf_dir):
-            if filename.endswith(".pdf"):
-                pdf_path = os.path.join(pdf_dir, filename)
-                loader = PyPDFLoader(pdf_path)
+    #     for filename in os.listdir(pdf_dir):
+    #         if filename.endswith(".pdf"):
+    #             pdf_path = os.path.join(pdf_dir, filename)
+    #             loader = PyPDFLoader(pdf_path)
                 
-                # Load and split the PDF
-                try:
-                    documents = loader.load_and_split(text_splitter)
-                    print(f"Documents loaded for {filename}: {documents[:5]}")  # Debugging
+    #             # Load and split the PDF
+    #             try:
+    #                 documents = loader.load_and_split(text_splitter)
+    #                 print(f"Documents loaded for {filename}: {documents[:5]}")  # Debugging
                     
-                    # Handle documents properly based on their structure
-                    if documents and isinstance(documents[0], str):
-                        # Handle case where documents are plain strings
-                        limited_documents = documents[:5]
-                        pdf_tool = Tool(
-                            name=f"PDF_Reader_{filename}",
-                            func=lambda docs=limited_documents: "\n".join(docs),
-                            description=f"Use this tool to read and extract information from the PDF file {filename}"
-                        )
-                    elif documents and hasattr(documents[0], "page_content"):
-                        # Handle case where documents are objects with 'page_content'
-                        limited_documents = documents[:5]
-                        pdf_tool = Tool(
-                            name=f"PDF_Reader_{filename}",
-                            func=lambda docs=limited_documents: "\n".join([doc.page_content for doc in docs]),
-                            description=f"Use this tool to read and extract information from the PDF file {filename}"
-                        )
-                    else:
-                        print(f"Unexpected structure for documents in {filename}: {documents}")
-                        continue  # Skip if structure is not as expected
+    #                 # Handle documents properly based on their structure
+    #                 if documents and isinstance(documents[0], str):
+    #                     # Handle case where documents are plain strings
+    #                     limited_documents = documents[:5]
+    #                     pdf_tool = Tool(
+    #                         name=f"PDF_Reader_{filename}",
+    #                         func=lambda docs=limited_documents: "\n".join(docs),
+    #                         description=f"Use this tool to read and extract information from the PDF file {filename}"
+    #                     )
+    #                 elif documents and hasattr(documents[0], "page_content"):
+    #                     # Handle case where documents are objects with 'page_content'
+    #                     limited_documents = documents[:5]
+    #                     pdf_tool = Tool(
+    #                         name=f"PDF_Reader_{filename}",
+    #                         func=lambda docs=limited_documents: "\n".join([doc.page_content for doc in docs]),
+    #                         description=f"Use this tool to read and extract information from the PDF file {filename}"
+    #                     )
+    #                 else:
+    #                     print(f"Unexpected structure for documents in {filename}: {documents}")
+    #                     continue  # Skip if structure is not as expected
 
-                    pdf_tools.append(pdf_tool)
+    #                 pdf_tools.append(pdf_tool)
                 
-                except Exception as e:
-                    print(f"Error loading or splitting PDF {filename}: {e}")
-                    continue  # Skip problematic PDFs
+    #             except Exception as e:
+    #                 print(f"Error loading or splitting PDF {filename}: {e}")
+    #                 continue  # Skip problematic PDFs
         
-        return pdf_tools
+    #     return pdf_tools
     
     def cost_search(self, country_filter="Spain"):
         """
@@ -251,7 +251,7 @@ class CrewAIChatbot:
         return Agent(
             role='Renovation Expert',
             goal='Provide detailed guidance on home renovation projects.',
-            tools=[self.search_tool] + self.pdf_tools,
+            tools=[self.search_tool],#+ self.pdf_tools,
             verbose=True,
             backstory=(
                 "You are an experienced expert in home renovations. "
@@ -322,7 +322,7 @@ class CrewAIChatbot:
         return Agent(
             role='Step-by-Step Guide',
             goal='Provide detailed step-by-step instructions for any task.',
-            tools=[self.search_tool] + self.pdf_tools,
+            tools=[self.search_tool], #+ self.pdf_tools,
             verbose=True,
             backstory=(
                 "You are an expert guide. Your role is to break down complex tasks into clear, manageable steps."
@@ -475,9 +475,6 @@ class CrewAIChatbot:
                         f"If information is missing, generate a specific question for the user.",
             agent=self.materials_agent(),
             expected_output=(
-                "If more information from the user is required, answer 'question:' followed by a clear and specific question in the language of the user. For example:\n"
-                "- 'What type of materials would you prefer for this project?'\n"
-                "- 'What is the size or scope of the project to estimate the quantity of materials needed?'\n"
                 "If no more information from the user is needed, answer with a markdown list of materials, including the estimated required quantities and alternatives, e.g.:\n\n"
                 "- **Material 1**: High-quality cement\n"
                 "  - Quantity: 10 kg\n"
@@ -501,9 +498,6 @@ class CrewAIChatbot:
                         f"If key information is missing, generate a specific question to ask the user to gather the necessary details.",        
             agent=self.tools_agent(),
             expected_output=(
-                "If more information from the user is required, answer 'question:' followed by a clear and specific question in the language of the user. For example:\n"
-                "- 'Could you specify if you have any preferred tools for this project?'\n"
-                "- 'Do you need any specialized tools to work with the materials you have chosen?'\n"
                 "If no additional information from the user is needed, answer with a markdown list of tools and their alternatives, e.g.:\n\n"
                 "- **Tool 1**: Electric drill\n"
                 "  - Alternative: Manual drill\n"
@@ -516,7 +510,6 @@ class CrewAIChatbot:
     def cost_estimation_task(self, materials_list):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         materials = self.context['materials']
-        tools = self.context['tools']
         location = self.context.get('user_location', 'Europe')
         currency = self.context.get('currency', '€')
 
@@ -531,16 +524,13 @@ class CrewAIChatbot:
                 f"Consider the conversation history: {recent_history}.\n"
                 f"Provide a cost estimation for the following materials: {materials_list}.\n"
                 f"Consider materials provided in context: {materials}.\n"
-                f"Consider tools provided in context: {tools}.\n"
                 f"Use the user's location ({location}) to determine the appropriate markets ({markets}) and currency ({currency}).\n"
                 f"If the user's location is unknown, default to providing costs in euros (€).\n"
                 f"Focus on direct price information (e.g., price per unit) and avoid providing unrelated context or market trends.\n"
                 f"Respond in markdown table format for clarity, showing costs in the relevant currency.\n"
-                f"Analyze if there is enough information to perform the task. If not, generate a specific question to ask the user for more details."
             ),
             agent=self.cost_agent(),
             expected_output=(
-                "If more information from the user is required, answer 'question:' followed by a specific question in the user's language.\n"
                 "If enough information is provided, respond with a markdown table of costs, referencing the relevant markets and using the appropriate currency. For example:\n\n"
                 "| Material        | Cost (in {currency})  | Alternatives                       |\n"
                 "|----------------|----------------------|------------------------------------|\n"
@@ -572,19 +562,17 @@ class CrewAIChatbot:
                 "3. Prepare the work area to ensure safety and efficiency.\n"
                 "4. Step-by-step breakdown of the actual work (e.g., removing old materials, installing new ones).\n"
                 "5. Final touches and clean-up instructions.\n"
-            )
+            ),
+            async_execution=True
+
         )
     
     def contractor_search_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        materials = self.context['materials']
-        tools = self.context['tools']
         return Task(
             description=(
                 f"Consider the conversation history: {recent_history}."
                 f"Search for a maximum of two contractors who specialize in the following project in the specified location or nearby. "
-                f"Consider materials provided in context: {materials}. "
-                f"Consider tools provided in context: {tools}. "
                 f"Provide contact details or links where the user can request a budget estimation. "
                 f"Ensure the contractors are well-reviewed or reputable, if possible. "
                 f"Analyze if there is enough information to perform the task, including location details. Make sure to know all relevant details. "
@@ -592,9 +580,6 @@ class CrewAIChatbot:
             ),
             agent=self.contractor_search_agent(),
             expected_output=(
-                "If more information from the user is required, answer 'question:' followed by a clear and specific question in the language of the user. For example:\n"
-                "- 'Could you specify the location for the project so I can find local contractors?'\n"
-                "- 'Are there any specific requirements or certifications needed for the contractors?'\n"
                 "If no additional information from the user is needed, answer with a list of up to two contractors with their contact information or website links, including details on how to request a budget estimation. For example:\n\n"
                 "- **Contractor 1**: ABC Renovations\n"
                 "  - Contact: (123) 456-7890\n"
@@ -602,42 +587,32 @@ class CrewAIChatbot:
                 "- **Contractor 2**: Home Fix Pros\n"
                 "  - Contact: (987) 654-3210\n"
                 "  - Website: [www.homefixpros.com](http://www.homefixpros.com)\n"
-            )
+            ),
+            async_execution=True
+
         )
 
     def safety_task(self, task_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        materials = self.context['materials']
-        tools = self.context['tools']
-        step_by_step_guide = self.context['step_by_step_guide']
         return Task(
             description=(
                 f"Consider the conversation history: {recent_history}."
-                f"Provide a careful, safety-focused guide for the following task: {task_description}. "
                 f"The instructions should prioritize accident prevention by outlining each step in detail, highlighting any safety risks,"
                 f"and suggesting appropriate protective measures or precautions. Emphasize where extra caution is needed."
-                f"Consider the question of the user: {task_description}."
-                f"Consider materials in context: {materials}. " 
-                f"Consider tools in context: {tools}. "
-                f"Consider step by step guide in context: {step_by_step_guide}. " 
                 f"Analyze if there is enough information to perform the task. Make sure to know all relevant details."
             ),
             agent=self.safety_agent(),
             expected_output=(
-                "If more information from the user is required, answer 'question:' followed by the text asking for the missing information needed to provide a complete response in the language of the user."
                 "If no more information from the user is needed, respond with a concise step-by-step safety guide. Include the following considerations:\n"
                 "- Key steps to perform the task safely."
                 "- Specific risks associated with each step."
                 "- Protective measures to mitigate risks."
                 "- Areas where extra caution is needed."
-                "If additional information is required, respond with 'question:' followed by a clear request for the missing details."
-                "(Text indicating the missing information needed to provide a complete response, if necessary.)"
-            )
+            ),
+            async_execution=True
         )
     def scheduling_task(self, project_description, deadline=None):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        materials = self.context['materials']
-        tools = self.context['tools']
         step_by_step_guide = self.context['step_by_step_guide']
 
         return Task(
@@ -645,8 +620,6 @@ class CrewAIChatbot:
                 f"Using the conversation history: {recent_history}, "
                 f"create a schedule for the project: {project_description}. "
                 f"Base the schedule on the following inputs:\n"
-                f"- Materials provided: {materials}\n"
-                f"- Tools provided: {tools}\n"
                 f"- Step-by-step guide: {step_by_step_guide}\n"
                 f"Provide a table with:\n"
                 f"- Task\n"
@@ -656,7 +629,6 @@ class CrewAIChatbot:
             ),
             agent=self.scheduler_agent(),
             expected_output=(
-                "If more information is needed, respond with 'question:' followed by the missing details.\n"
                 "If sufficient information is provided, return a detailed schedule in markdown format. Example:\n\n"
                 "| Task                | Duration | Recommended People |\n"
                 "|---------------------|----------|--------------------|\n"
@@ -706,7 +678,6 @@ class CrewAIChatbot:
                 "- Cost estimation.\n"
                 "- Safety guidance notes.\n"
                 "- Project schedule with clear timelines and dependencies.\n"
-                "- Questions asking for missing information if there is any.\n"
             )
         )
 
@@ -715,9 +686,12 @@ class CrewAIChatbot:
 
     def get_response(self, question):
         try:
+            import time
             self.context['conversation_history'].append({"role": "user", "content": question})
+            execution_times = {}
 
             # Step 0: Check relevance
+            start_time = time.time()
             relevance_task = self.check_relevance_task(question)
             relevance_crew = Crew(
                 agents=[relevance_task.agent],
@@ -725,12 +699,15 @@ class CrewAIChatbot:
                 verbose=True
             )
             relevance_result = relevance_crew.kickoff()
+            execution_times['relevance'] = round(time.time() - start_time, 2)
+            print(f"Relevance check took: {execution_times['relevance']} seconds")
 
             if relevance_result.lower().startswith('not related:'):
                 return relevance_result.split(':', 1)[1].strip()
 
             # Step 1: Classify project type if undefined
             if not self.context['project_type']:
+                start_time = time.time()
                 classification_task = self.planificator_task(question)
                 classification_crew = Crew(
                     agents=[classification_task.agent],
@@ -739,6 +716,8 @@ class CrewAIChatbot:
                 )
                 project_type_result = classification_crew.kickoff()
                 self.context['project_type'] = 'repair' if 'repair' in project_type_result.lower() else 'renovation'
+                execution_times['classification'] = round(time.time() - start_time, 2)
+                print(f"Classification took: {execution_times['classification']} seconds")
 
             # Sequentially process tasks
             sequential_tasks = [
@@ -753,6 +732,7 @@ class CrewAIChatbot:
 
             for task_method, context_key in sequential_tasks:
                 if not self.context.get(context_key):
+                    start_time = time.time()
                     task = task_method(question)
                     crew = Crew(agents=[task.agent], tasks=[task], verbose=True)
                     result = crew.kickoff()
@@ -760,17 +740,32 @@ class CrewAIChatbot:
                     if result.lower().startswith('question:'):
                         return result.split(':', 1)[1].strip()
                     self.context[context_key] = result
+                    execution_times[context_key] = round(time.time() - start_time, 2)
+                    print(f"{context_key.replace('_', ' ').title()} took: {execution_times[context_key]} seconds")
 
             # Step 8: Presentation
+            start_time = time.time()
             presentation_task = self.presentation_task(question)
             presentation_crew = Crew(agents=[presentation_task.agent], tasks=[presentation_task], verbose=True)
             final_result = presentation_crew.kickoff()
+            execution_times['presentation'] = round(time.time() - start_time, 2)
+            print(f"Presentation took: {execution_times['presentation']} seconds")
+
+            # Print total execution time
+            total_time = round(sum(execution_times.values()), 2)
+            print(f"\nTotal execution time: {total_time} seconds")
+            
+            # Print execution time summary
+            print("\nExecution time summary:")
+            for task, time_taken in execution_times.items():
+                percentage = round((time_taken / total_time) * 100, 1)
+                print(f"{task.replace('_', ' ').title()}: {time_taken}s ({percentage}%)")
 
             # Reset project after response
             self.reset_project()
 
             self.context['conversation_history'].append({"role": "assistant", "content": final_result})
-
+            
             return final_result
 
         except AttributeError as e:
