@@ -202,19 +202,13 @@ class CrewAIChatbot:
             verbose=True,
             backstory=(
                 "Your role is to gather all relevant information from the user to ensure the project is clearly defined and well-prepared. "
-                "Focus on understanding the project scope, location, size, budget, materials, tools, and timeline. "
-                "Your inquiries should be clear, concise, and phrased in a professional yet approachable tone. "
-                "If the user doesn’t have certain details or resources (e.g., materials or tools), offer reassurance and let them know assistance will be provided in later stages. "
-                "Always tailor your questions to the specific project type—repair or renovation—and adjust based on the information already provided by the user. "
-                "Ensure your questions are practical and directly support the planning and execution of the project."
+                "Acknowledge user responses dynamically and use them to adapt your follow-up questions. For instance, if the user provides dimensions, thank them and ask about budget next. "
+                "Ensure your inquiries are clear, concise, and phrased in a professional yet approachable tone. "
+                "If the user doesn’t have certain details, offer reassurance, and explain how you can help later in the process."
             ),
             llm=self.llm
         )
 
-
-
-
-    
     def repair_agent(self):
         return Agent(
             role='Repair Expert',
@@ -441,9 +435,13 @@ class CrewAIChatbot:
                 "- 'What are the dimensions of the area to be worked on?'\n"
                 "- 'Do you already have some materials or tools available for this project? If not, no problem—I can assist with recommendations.'\n"
                 "- 'What is your budget range for this project?'\n"
-                "If no additional information is needed, confirm with the user that the details are complete, and summarize the gathered information for clarity."
+                "If no additional information is needed, confirm with the user that the details are complete, summarize the gathered information, "
+                "and offer reassurance that the project can proceed to the next step. For example:\n"
+                "- 'Great! Based on what you've shared, I have all the details I need to proceed.'\n"
+                "- 'Here's a quick summary of what I understand: [summary]. Let me know if I missed anything!'"
             )
         )
+
 
     def materials_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
@@ -583,8 +581,7 @@ class CrewAIChatbot:
             "- **Contractor 2**: Home Fix Pros\n"
             "  - Contact: (987) 654-3210\n"
             "  - Website: [www.homefixpros.com](http://www.homefixpros.com)\n"
-            ),
-            async_execution=True
+            )
         )
 
     def safety_task(self, task_description):
@@ -702,8 +699,7 @@ class CrewAIChatbot:
         try:
             self.context['conversation_history'].append({"role": "user", "content": question})
             
-            
-            # Step 0: Check relevance
+            # Step 1: Check relevance
             relevance_task = self.check_relevance_task(question)
             relevance_crew = Crew(
                 agents=[relevance_task.agent],
@@ -715,7 +711,7 @@ class CrewAIChatbot:
             if relevance_result.lower().startswith('not related:'):
                 return relevance_result.split(':', 1)[1].strip()
 
-            # Step 1: Classify project type if undefined
+            # Step 2: Classify project type if undefined
             if not self.context['project_type']:
                 classification_task = self.planificator_task(question)
                 classification_crew = Crew(
@@ -726,39 +722,55 @@ class CrewAIChatbot:
                 project_type_result = classification_crew.kickoff()
                 self.context['project_type'] = 'repair' if 'repair' in project_type_result.lower() else 'renovation'
 
+            # Step 3: Check for questions
+            questions_task = self.questions_task(question)
+            questions_crew = Crew(
+                agents=[questions_task.agent],
+                tasks=[questions_task],
+                verbose=True
+            )
+            questions_result = questions_crew.kickoff()
 
-            # Sequentially process tasks
-            sequential_tasks = [
-                (self.materials_task, 'materials'),
-                (self.tools_task, 'tools'),
-                (self.cost_estimation_task, 'cost_estimation'),
-                (self.guide_task, 'step_by_step_guide'),
-                (self.contractor_search_task, 'contractors'),
-                (self.safety_task, 'safety_guidance'),
-                (self.scheduling_task, 'schedule') 
-            ]
+            # Branch based on whether there are questions
+            if questions_result.lower().startswith('question:'):
+                # If there are questions, return them and don't proceed with tasks
+                return questions_result.split(':', 1)[1].strip()
+            else:
+                # Only proceed with task sequence if there are no questions
+                task_sequence = [
+                    (self.materials_task, 'materials'),
+                    (self.tools_task, 'tools'),
+                    (self.cost_estimation_task, 'cost_estimation'),
+                    (self.guide_task, 'step_by_step_guide'),
+                    (self.contractor_search_task, 'contractors'),
+                    (self.safety_task, 'safety_guidance'),
+                    (self.scheduling_task, 'schedule')
+                ]
 
-            for task_method, context_key in sequential_tasks:
-                if not self.context.get(context_key):
-                    task = task_method(question)
-                    crew = Crew(agents=[task.agent], tasks=[task], verbose=True)
-                    result = crew.kickoff()
+                # Process all tasks and store results
+                task_results = {}
+                for task_method, context_key in task_sequence:
+                    if not self.context.get(context_key):
+                        task = task_method(question)
+                        crew = Crew(agents=[task.agent], tasks=[task], verbose=True)
+                        result = crew.kickoff()
+                        task_results[context_key] = result
+                        self.context[context_key] = result
 
-                    if result.lower().startswith('question:'):
-                        return result.split(':', 1)[1].strip()
-                    self.context[context_key] = result
+                # Final presentation only happens if we completed the task sequence
+                presentation_task = self.presentation_task(question, task_results)
+                presentation_crew = Crew(
+                    agents=[presentation_task.agent], 
+                    tasks=[presentation_task], 
+                    verbose=True
+                )
+                final_result = presentation_crew.kickoff()
 
-            # Step 8: Presentation
-            presentation_task = self.presentation_task(question)
-            presentation_crew = Crew(agents=[presentation_task.agent], tasks=[presentation_task], verbose=True)
-            final_result = presentation_crew.kickoff()
+                # Reset project and update conversation history
+                self.reset_project()
+                self.context['conversation_history'].append({"role": "assistant", "content": final_result})
 
-            # Reset project after response
-            self.reset_project()
-
-            self.context['conversation_history'].append({"role": "assistant", "content": final_result})
-
-            return final_result
+                return final_result
 
         except AttributeError as e:
             return f"Sorry, there was an issue with one of the tools or attributes: {str(e)}"
