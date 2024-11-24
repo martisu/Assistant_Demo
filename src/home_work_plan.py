@@ -54,21 +54,44 @@ class CrewAIChatbot:
         pdf_tools = []
         pdf_dir = "data/"
         text_splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+        
         for filename in os.listdir(pdf_dir):
             if filename.endswith(".pdf"):
                 pdf_path = os.path.join(pdf_dir, filename)
                 loader = PyPDFLoader(pdf_path)
-                documents = loader.load_and_split(text_splitter)
                 
-                max_chunks = 5
-                limited_documents = documents[:max_chunks]
+                # Load and split the PDF
+                try:
+                    documents = loader.load_and_split(text_splitter)
+                    print(f"Documents loaded for {filename}: {documents[:5]}")  # Debugging
+                    
+                    # Handle documents properly based on their structure
+                    if documents and isinstance(documents[0], str):
+                        # Handle case where documents are plain strings
+                        limited_documents = documents[:5]
+                        pdf_tool = Tool(
+                            name=f"PDF_Reader_{filename}",
+                            func=lambda docs=limited_documents: "\n".join(docs),
+                            description=f"Use this tool to read and extract information from the PDF file {filename}"
+                        )
+                    elif documents and hasattr(documents[0], "page_content"):
+                        # Handle case where documents are objects with 'page_content'
+                        limited_documents = documents[:5]
+                        pdf_tool = Tool(
+                            name=f"PDF_Reader_{filename}",
+                            func=lambda docs=limited_documents: "\n".join([doc.page_content for doc in docs]),
+                            description=f"Use this tool to read and extract information from the PDF file {filename}"
+                        )
+                    else:
+                        print(f"Unexpected structure for documents in {filename}: {documents}")
+                        continue  # Skip if structure is not as expected
+
+                    pdf_tools.append(pdf_tool)
                 
-                pdf_tool = Tool(
-                    name=f"PDF_Reader_{filename}",
-                    func=lambda docs=limited_documents: "\n".join([doc.page_content for doc in docs]),
-                    description=f"Use this tool to read and extract information from the PDF file {filename}"
-                )
-                pdf_tools.append(pdf_tool)
+                except Exception as e:
+                    print(f"Error loading or splitting PDF {filename}: {e}")
+                    continue  # Skip problematic PDFs
+        
         return pdf_tools
     
     def cost_search(self, country_filter="Spain"):
