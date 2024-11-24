@@ -148,8 +148,6 @@ class CrewAIChatbot:
         except Exception as e:
             return f"Error occurred: {str(e)}"
 
-
-
     def load_credentials(self, path):
         with open(path, "r") as stream:
             return yaml.safe_load(stream)
@@ -437,47 +435,34 @@ class CrewAIChatbot:
         )
 
     def questions_task(self, question):
-        # Function to sanitize input and prevent flagged terms
-        def sanitize_text(text):
-            restricted_terms = ["bypass", "hack", "exploit", "jailbreak"]
-            for term in restricted_terms:
-                text = text.replace(term, "[restricted]")
-            return text
-
-        # Sanitize inputs and history
-        recent_history = [
-            sanitize_text(entry["content"]) for entry in self.context["conversation_history"][-self.HISTORY_LIMIT:]
-        ]
-        sanitized_question = sanitize_text(question)
+        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         project_type = self.context["project_type"]
+
+        # Format recent history for inclusion in the task
+        history_str = "\n".join([f"{entry['role']}: {entry['content']}" for entry in recent_history])
 
         # Define the task
         return Task(
             description=(
-                f"Analyze the sanitized conversation history: {recent_history}, the project type ({project_type}), "
-                f"and the user's question '{sanitized_question}'. Your task is to gather all missing details needed to fully define the project. "
-                "Based on the context and user input, determine which details are still unclear or incomplete. "
-                "Ask specific, clear, and professional questions to fill these gaps, ensuring the user feels supported throughout the process. "
-                "Adapt your questions to the project type—repair or renovation—and prioritize gathering details such as:\n"
-                "- The dimensions or size of the project area.\n"
-                "- The location of the project (e.g., indoor or outdoor, city for contractors).\n"
-                "- The budget and material preferences (economical, premium, or sustainable).\n"
-                "- Whether the user has any tools or materials available to use.\n"
-                "- The desired timeline and urgency of the project.\n"
-                "If the user lacks certain information, offer reassurance, and frame your questions in a way that keeps the process collaborative and stress-free."
+                f"Considering the following recent conversation history:\n\n{history_str}\n\n"
+                f"Analyze the user's query: '{question}' in the context of the conversation and the project type: '{project_type}'.\n\n"
+                f"Determine if additional questions are needed to gather missing details about the project.\n"
+                f"If further clarification is required, respond with 'Question: ' followed by specific, clear, and professional questions tailored to the context. Examples include:\n"
+                f"- 'What are the dimensions of the area to be worked on?'\n"
+                f"- 'Do you already have some materials or tools available for this project?'\n"
+                f"- 'What is your budget range for this project?'\n\n"
+                f"If no further questions are needed, respond with 'Complete: ' followed by a confirmation message and a summary of the gathered information. Examples include:\n"
+                f"- 'Great! Based on what you've shared, I have all the details I need to proceed.'\n"
+                f"- 'Here's a quick summary of what I understand: [summary]. Let me know if I missed anything!'"
             ),
             agent=self.questions_agent(),
             expected_output=(
-                "If additional information is needed, start your response with 'question:' followed by specific and user-friendly questions. Examples include:\n"
-                "- 'What are the dimensions of the area to be worked on?'\n"
-                "- 'Do you already have some materials or tools available for this project? If not, no problem—I can assist with recommendations.'\n"
-                "- 'What is your budget range for this project?'\n"
-                "If no additional information is needed, confirm with the user that the details are complete, summarize the gathered information, "
-                "and offer reassurance that the project can proceed to the next step. For example:\n"
-                "- 'Great! Based on what you've shared, I have all the details I need to proceed.'\n"
-                "- 'Here's a quick summary of what I understand: [summary]. Let me know if I missed anything!'"
+                "A response prefixed with either:\n"
+                "- 'Question: ' followed by specific questions to gather missing details.\n"
+                "- 'Complete: ' followed by a confirmation and summary of gathered details."
             )
         )
+
 
     def materials_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
@@ -682,9 +667,6 @@ class CrewAIChatbot:
             )
         )
 
-
-
-
     def presentation_task(self, task_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         materials = self.context['materials']
@@ -734,8 +716,8 @@ class CrewAIChatbot:
     def get_response(self, question):
         try:
             self.context['conversation_history'].append({"role": "user", "content": question})
-            
-            # Step 1: Check relevance
+
+            # Step 0: Check relevance
             relevance_task = self.check_relevance_task(question)
             relevance_crew = Crew(
                 agents=[relevance_task.agent],
@@ -747,7 +729,7 @@ class CrewAIChatbot:
             if relevance_result.lower().startswith('not related:'):
                 return relevance_result.split(':', 1)[1].strip()
 
-            # Step 2: Classify project type if undefined
+            # Step 1: Classify project type if undefined
             if not self.context['project_type']:
                 classification_task = self.planificator_task(question)
                 classification_crew = Crew(
@@ -758,55 +740,38 @@ class CrewAIChatbot:
                 project_type_result = classification_crew.kickoff()
                 self.context['project_type'] = 'repair' if 'repair' in project_type_result.lower() else 'renovation'
 
-            # Step 3: Check for questions
-            questions_task = self.questions_task(question)
-            questions_crew = Crew(
-                agents=[questions_task.agent],
-                tasks=[questions_task],
-                verbose=True
-            )
-            questions_result = questions_crew.kickoff()
+            # Sequentially process tasks
+            sequential_tasks = [
+                (self.materials_task, 'materials'),
+                (self.tools_task, 'tools'),
+                (self.cost_estimation_task, 'cost_estimation'),
+                (self.guide_task, 'step_by_step_guide'),
+                (self.contractor_search_task, 'contractors'),
+                (self.safety_task, 'safety_guidance'),
+                (self.scheduling_task, 'schedule') 
+            ]
 
-            # Branch based on whether there are questions
-            if questions_result.lower().startswith('question:'):
-                # If there are questions, return them and don't proceed with tasks
-                return questions_result.split(':', 1)[1].strip()
-            else:
-                # Only proceed with task sequence if there are no questions
-                task_sequence = [
-                    (self.materials_task, 'materials'),
-                    (self.tools_task, 'tools'),
-                    (self.cost_estimation_task, 'cost_estimation'),
-                    (self.guide_task, 'step_by_step_guide'),
-                    (self.contractor_search_task, 'contractors'),
-                    (self.safety_task, 'safety_guidance'),
-                    (self.scheduling_task, 'schedule')
-                ]
+            for task_method, context_key in sequential_tasks:
+                if not self.context.get(context_key):
+                    task = task_method(question)
+                    crew = Crew(agents=[task.agent], tasks=[task], verbose=True)
+                    result = crew.kickoff()
 
-                # Process all tasks and store results
-                task_results = {}
-                for task_method, context_key in task_sequence:
-                    if not self.context.get(context_key):
-                        task = task_method(question)
-                        crew = Crew(agents=[task.agent], tasks=[task], verbose=True)
-                        result = crew.kickoff()
-                        task_results[context_key] = result
-                        self.context[context_key] = result
+                    if result.lower().startswith('question:'):
+                        return result.split(':', 1)[1].strip()
+                    self.context[context_key] = result
 
-                # Final presentation only happens if we completed the task sequence
-                presentation_task = self.presentation_task(question, task_results)
-                presentation_crew = Crew(
-                    agents=[presentation_task.agent], 
-                    tasks=[presentation_task], 
-                    verbose=True
-                )
-                final_result = presentation_crew.kickoff()
+            # Step 8: Presentation
+            presentation_task = self.presentation_task(question)
+            presentation_crew = Crew(agents=[presentation_task.agent], tasks=[presentation_task], verbose=True)
+            final_result = presentation_crew.kickoff()
 
-                # Reset project and update conversation history
-                self.reset_project()
-                self.context['conversation_history'].append({"role": "assistant", "content": final_result})
+            # Reset project after response
+            self.reset_project()
 
-                return final_result
+            self.context['conversation_history'].append({"role": "assistant", "content": final_result})
+
+            return final_result
 
         except AttributeError as e:
             return f"Sorry, there was an issue with one of the tools or attributes: {str(e)}"
