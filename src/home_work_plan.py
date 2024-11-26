@@ -19,6 +19,16 @@ class CrewAIChatbot:
     def __init__(self, credentials_path):
         self.credentials = self.load_credentials(credentials_path)
 
+        self.task_dependencies = {
+            'schedule': set(),  
+            'materials': {'schedule'},  
+            'tools': {'schedule'}, 
+            'step_by_step_guide': {'schedule'}, 
+            'contractors': {'schedule'}, 
+            'safety_guidance': {'schedule'}, 
+            'cost_estimation': {'schedule', 'materials', 'tools'} 
+        }
+
         # Set OpenAI API key in environment variables
         os.environ["AZURE_API_KEY"] = self.credentials["AZURE_API_KEY"]
         os.environ["AZURE_API_BASE"] = self.credentials["AZURE_ENDPOINT"]
@@ -183,16 +193,23 @@ class CrewAIChatbot:
     ##------------------------------------AGENTS------------------------------------
     def relevance_agent(self):
         return Agent(
-            role='Relevance Checker and Redirector',
-            goal='Determine if a query is related to home improvement projects and provide a helpful response.',
+            role='Relevance Checker and Information Gatherer',
+            goal='Determine if a query is related to home improvement projects and gather all necessary information.',
             tools=[],
             verbose=True,
             backstory=(
                 "You are an expert in home improvement projects with excellent communication skills. "
-                "Your task is to determine if a question is about home repairs, renovations, or any other home improvement task. "
-                "If the input is not related, gently redirect the conversation back to home improvement. "
-                "Always respond in the language of the user. "
-                "Provide a friendly explanation and suggest a related home improvement topic if possible."
+                "Your task has TWO parts:\n"
+                "1. Determine if a question is about home repairs, renovations, or any other home improvement task.\n"
+                "2. If it is related, analyze what information would be needed for ALL phases of the project:\n"
+                "   - Dimensions and specifications\n"
+                "   - Material preferences and quantities\n"
+                "   - Tools and equipment needs\n"
+                "   - Budget constraints\n"
+                "   - Timeline requirements\n"
+                "   - Location details\n"
+                "   - Safety considerations\n"
+                "Always respond in the language of the user and ensure all gathered information is complete before proceeding."
             ),
             llm=self.llm
         )
@@ -276,7 +293,6 @@ class CrewAIChatbot:
                 "Your role is to provide detailed advice on materials used for various projects. "
                 "Create a list using markdown that includes the materials and their alternatives. "
                 "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
-                "Analyze if there is enough information to perform the task. "
                 "Use a maximum of four sentences to keep the response concise."
             ),
             llm=self.llm
@@ -295,7 +311,6 @@ class CrewAIChatbot:
             "Using the task context provided, filter and select only the tools required for the specific job. "
             "Exclude any materials or unrelated items. Provide the list in markdown format, "
             "including alternatives if available. "
-            "Analyze if there is enough information to perform the task. "
             "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
             ),
             llm=self.llm
@@ -329,7 +344,6 @@ class CrewAIChatbot:
                 "Always ensure the instructions are simple and precise, adjusting based on the user's feedback."
                 "Provide explanations for each step, but keep them concise."
                 "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise." 
-                "Analyze if there is enough information to perform the task. "
                 "Respond using the currency of the user’s location if specified; otherwise, default to euros."
             ),
             llm=self.llm
@@ -345,7 +359,6 @@ class CrewAIChatbot:
                 "You are an expert in finding reliable contractors for home improvement projects. "
                 "Your role is to find contractors based on the user’s project description, preferably near their location. "
                 "Search for relevant contractor listings, company websites, and review aggregators, and provide contact details or links where they can request a budget. "
-                "Analyze if there is enough information to perform the task. "
                 "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
             ),
             llm=self.llm
@@ -363,7 +376,6 @@ class CrewAIChatbot:
                 "For each task, outline the required safety measures, such as protective gear, safety checks, or any specific warnings. "
                 "Provide clear, detailed instructions, making sure to emphasize steps where caution is required. "
                 "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
-                "Analyze if there is enough information to perform the task. "
                 "adapt instructions based on the context and task complexity."
             ),
             llm=self.llm
@@ -371,17 +383,19 @@ class CrewAIChatbot:
     
     def scheduler_agent(self):
         return Agent(
-            role='Project Scheduler',
-            goal='Create a detailed schedule for home improvement projects based on user-provided constraints and priorities.',
-            tools=[],
+            role='Project Analyzer and Scheduler',
+            goal='Analyze project requirements, identify missing information, and create schedule with guidance.',
+            tools=[self.search_tool] + self.pdf_tools,
             verbose=True,
             backstory=(
-                "You are a project scheduling expert with experience in construction and home improvement tasks. "
-                "Your task is to organize project steps into a logical order and assign estimated durations. "
-                "Take into account task dependencies, resource availability, and deadlines provided by the user. "
-                "If constraints or resources are unclear, ask specific questions to clarify. "
-                "Always ensure the schedule is realistic, and recommend adjustments if necessary to meet deadlines. "
-                "Present the schedule in a structured markdown table or a clear step-by-step format."
+                "You are a comprehensive project analysis expert who first evaluates all needed information "
+                "for the entire project lifecycle including materials, tools, costs, safety, and execution. "
+                "Your primary responsibility is to identify ANY missing information that would be needed by ANY phase "
+                "of the project (materials selection, tool requirements, cost estimation, contractor selection, etc). "
+                "Only after ALL information is available, you create a detailed schedule and step-by-step guide. "
+                "You think systematically about ALL aspects that other specialists would need to know: "
+                "dimensions, materials preferences, budget constraints, timeline requirements, location details, "
+                "specific requirements for contractors, safety considerations, etc."
             ),
             llm=self.llm
         )
@@ -404,24 +418,33 @@ class CrewAIChatbot:
 
 
 ##------------------------------------TASKS------------------------------------
-
+    
     def check_relevance_task(self, question):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         history_str = "\n".join([f"{entry['role']}: {entry['content']}" for entry in recent_history])
 
         return Task(
             description=(
-                f"Considering the following recent conversation history:\n\n{history_str}\n\n"
-                f"Analyze if the following query is related to home improvement projects: {question}\n"
-                f"If it's related, respond with 'RELATED: ' followed by a brief confirmation.\n"
-                f"If it's not related, respond with 'NOT RELATED: ' followed by a friendly message that:\n"
-                f"1. Acknowledges the user's question\n"
-                f"2. Gently reminds them that you're specialized in home improvement\n"
-                f"3. Suggests a related home improvement topic they might be interested in\n"
-                f"Ensure your response is in the same language as the user's query."
+                f"Analyze the following query considering the conversation history:\n{history_str}\n\n"
+                f"Follow these steps internally (but DO NOT include these steps in your response):\n"
+                f"1. Check if query is related to home improvement\n"
+                f"2. If related, analyze what information is needed\n\n"
+                f"Then, RESPOND USING EXACTLY ONE of these formats:\n"
+                f"- If not related: Start with 'NOT RELATED: ' followed by friendly redirection\n"
+                f"- If related but missing info: Start with 'question: ' followed by necessary questions\n"
+                f"- If related and complete: Start with 'RELATED: ' followed by confirmation\n\n"
+                f"IMPORTANT:\n"
+                f"- DO NOT include phase descriptions or any other prefixes in your response\n"
+                f"- Respond in the same language as the user's query\n"
+                f"- Start DIRECTLY with one of the three specified prefixes"
             ),
             agent=self.relevance_agent(),
-            expected_output="A decision of 'RELATED: ' or 'NOT RELATED: ' followed by an appropriate response."
+            expected_output=(
+                "MUST return EXACTLY ONE of these three formats:\n"
+                "1. 'NOT RELATED: ' followed by friendly redirection in the language of the user\n"
+                "2. 'question: ' followed by ALL necessary questions in the language of the user\n"  
+                "3. 'RELATED: ' if query is related and all information is available\n"
+            )
         )
 
     def planificator_task(self, question):
@@ -466,19 +489,16 @@ class CrewAIChatbot:
 
     def materials_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
+        schedule = self.context['schedule']
         return Task(
             description=f"Consider the conversation history: {recent_history}."
+                        f"Consider schedule provided in context: {schedule}. "
                         f"List the materials required for the following project: {project_description}. "
                         f"The response should only contain the MATERIALS and must NOT include the TOOLS. "
-                        f"Include alternatives where applicable. "
-                        f"Analyze if there is enough information to perform the task and provide an appropriate response and make sure to know all relevant details"
-                        f"If information is missing, generate a specific question for the user.",
+                        f"Include alternatives where applicable. ",
             agent=self.materials_agent(),
             expected_output=(
-                "If more information from the user is required, answer 'question:' followed by a clear and specific question in the language of the user. For example:\n"
-                "- 'What type of materials would you prefer for this project?'\n"
-                "- 'What is the size or scope of the project to estimate the quantity of materials needed?'\n"
-                "If no more information from the user is needed, answer with a markdown list of materials, including the estimated required quantities and alternatives, e.g.:\n\n"
+                " Answer with a markdown list of materials, including the estimated required quantities and alternatives, e.g.:\n\n"
                 "- **Material 1**: High-quality cement\n"
                 "  - Quantity: 10 kg\n"
                 "  - Alternative: Eco-friendly cement (8 kg)\n"
@@ -491,20 +511,15 @@ class CrewAIChatbot:
 
     def tools_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        materials = self.context['materials']
+        schedule = self.context['schedule']
         return Task(
             description=f"Consider the conversation history: {recent_history}."
                         f"List the tools required for the following project: {project_description}. "
-                        f"Consider materials provided in context: {materials}. "
-                        f"The response should only contain the TOOLS and must NOT include the MATERIALS. "
-                        f"Analyze if there is enough information to perform the task effectively. Make sure to know all relevant details "
-                        f"If key information is missing, generate a specific question to ask the user to gather the necessary details.",        
+                        f"Consider schedule provided in context: {schedule}. "
+                        f"The response should only contain the TOOLS and must NOT include the MATERIALS. ",
             agent=self.tools_agent(),
             expected_output=(
-                "If more information from the user is required, answer 'question:' followed by a clear and specific question in the language of the user. For example:\n"
-                "- 'Could you specify if you have any preferred tools for this project?'\n"
-                "- 'Do you need any specialized tools to work with the materials you have chosen?'\n"
-                "If no additional information from the user is needed, answer with a markdown list of tools and their alternatives, e.g.:\n\n"
+                " Answer with a markdown list of tools and their alternatives, e.g.:\n\n"
                 "- **Tool 1**: Electric drill\n"
                 "  - Alternative: Manual drill\n"
                 "- **Tool 2**: Screwdriver (Phillips)\n"
@@ -515,6 +530,7 @@ class CrewAIChatbot:
  
     def cost_estimation_task(self, materials_list):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
+        schedule = self.context['schedule']
         materials = self.context['materials']
         tools = self.context['tools']
         location = self.context.get('user_location', 'Europe')
@@ -530,22 +546,22 @@ class CrewAIChatbot:
             description=(
                 f"Consider the conversation history: {recent_history}.\n"
                 f"Provide a cost estimation for the following materials: {materials_list}.\n"
+                f"Consider schedule provided in context: {schedule}.\n"
                 f"Consider materials provided in context: {materials}.\n"
                 f"Consider tools provided in context: {tools}.\n"
                 f"Use the user's location ({location}) to determine the appropriate markets ({markets}) and currency ({currency}).\n"
                 f"If the user's location is unknown, default to providing costs in euros (€).\n"
                 f"Focus on direct price information (e.g., price per unit) and avoid providing unrelated context or market trends.\n"
                 f"Respond in markdown table format for clarity, showing costs in the relevant currency.\n"
-                f"Analyze if there is enough information to perform the task. If not, generate a specific question to ask the user for more details."
             ),
             agent=self.cost_agent(),
             expected_output=(
-                "If more information from the user is required, answer 'question:' followed by a specific question in the user's language.\n"
-                "If enough information is provided, respond with a markdown table of costs, referencing the relevant markets and using the appropriate currency. For example:\n\n"
+                "Respond with a markdown table of costs, referencing the relevant markets and using the appropriate currency. For example:\n\n"
                 "| Material        | Cost (in {currency})  | Alternatives                       |\n"
                 "|----------------|----------------------|------------------------------------|\n"
                 "| Paint          | 15 €/liter          | Eco-paint (20 €/liter)             |\n"
-            )
+            ),
+            async_execution=True
         )
 
     
@@ -558,55 +574,50 @@ class CrewAIChatbot:
                         f"Provide detailed step-by-step instructions for the following repair or renovation process: {repair_or_renovation_process}. "
                         f"Consider materials provided in context: {materials}. "
                         f"Consider tools provided in context: {tools}. "
-                        f"Ensure that the steps are easy to follow and comprehensive, covering all necessary tools, materials, and safety precautions. "
-                        f"Analyze if there is enough information to perform the task. Make sure to know all relevant details."
-                        f"If key information is missing, generate a specific question to ask the user to gather the necessary details.",
+                        f"Ensure that the steps are easy to follow and comprehensive, covering all necessary tools, materials, and safety precautions. ",
             agent=self.guide_agent(),
             expected_output=(
-                "If more information from the user is required, answer 'question:' followed by a clear and specific question in the language of the user. For example:\n"
-                "- 'What specific steps do you want to include in the process?'\n"
-                "- 'Are there any special materials or safety considerations for this task?'\n"
-                "If no additional information from the user is needed, answer with a list of detailed steps for the repair or renovation process. For example:\n\n"
+                "Answer with a list of detailed steps for the repair or renovation process. For example:\n\n"
                 "1. Identify the scope of the repair or renovation.\n"
                 "2. Gather all necessary tools and materials.\n"
                 "3. Prepare the work area to ensure safety and efficiency.\n"
                 "4. Step-by-step breakdown of the actual work (e.g., removing old materials, installing new ones).\n"
                 "5. Final touches and clean-up instructions.\n"
-            )
+            ),
+            async_execution=True
         )
     
     def contractor_search_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         materials = self.context['materials']
         tools = self.context['tools']
+        schedule = self.context['schedule']
         return Task(
             description=(
                 f"Consider the conversation history: {recent_history}."
                 f"Search for a maximum of two contractors who specialize in the following project in the specified location or nearby. "
+                f"Consider materials provided in context: {schedule}. "
                 f"Consider materials provided in context: {materials}. "
                 f"Consider tools provided in context: {tools}. "
                 f"Provide contact details or links where the user can request a budget estimation. "
                 f"Ensure the contractors are well-reviewed or reputable, if possible. "
-                f"Analyze if there is enough information to perform the task, including location details. Make sure to know all relevant details. "
-                f"If key information is missing, generate a specific question to ask the user to gather the necessary details."
             ),
             agent=self.contractor_search_agent(),
             expected_output=(
-                "If more information from the user is required, answer 'question:' followed by a clear and specific question in the language of the user. For example:\n"
-                "- 'Could you specify the location for the project so I can find local contractors?'\n"
-                "- 'Are there any specific requirements or certifications needed for the contractors?'\n"
-                "If no additional information from the user is needed, answer with a list of up to two contractors with their contact information or website links, including details on how to request a budget estimation. For example:\n\n"
+                "Answer with a list of up to two contractors with their contact information or website links, including details on how to request a budget estimation. For example:\n\n"
                 "- **Contractor 1**: ABC Renovations\n"
                 "  - Contact: (123) 456-7890\n"
                 "  - Website: [www.abcrenovations.com](http://www.abcrenovations.com)\n"
                 "- **Contractor 2**: Home Fix Pros\n"
                 "  - Contact: (987) 654-3210\n"
                 "  - Website: [www.homefixpros.com](http://www.homefixpros.com)\n"
-            )
+            ),
+            async_execution=True
         )
 
     def safety_task(self, task_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
+        schedule = self.context['schedule']
         materials = self.context['materials']
         tools = self.context['tools']
         step_by_step_guide = self.context['step_by_step_guide']
@@ -618,54 +629,54 @@ class CrewAIChatbot:
                 f"and suggesting appropriate protective measures or precautions. Emphasize where extra caution is needed."
                 f"Consider the question of the user: {task_description}."
                 f"Consider materials in context: {materials}. " 
+                f"Consider schedule in context: {schedule}. " 
                 f"Consider tools in context: {tools}. "
                 f"Consider step by step guide in context: {step_by_step_guide}. " 
-                f"Analyze if there is enough information to perform the task. Make sure to know all relevant details."
             ),
             agent=self.safety_agent(),
             expected_output=(
-                "If more information from the user is required, answer 'question:' followed by the text asking for the missing information needed to provide a complete response in the language of the user."
-                "If no more information from the user is needed, respond with a concise step-by-step safety guide. Include the following considerations:\n"
+                "Respond with a concise step-by-step safety guide. Include the following considerations:\n"
                 "- Key steps to perform the task safely."
                 "- Specific risks associated with each step."
                 "- Protective measures to mitigate risks."
                 "- Areas where extra caution is needed."
                 "If additional information is required, respond with 'question:' followed by a clear request for the missing details."
                 "(Text indicating the missing information needed to provide a complete response, if necessary.)"
-            )
+            ),
+            async_execution=True
         )
+
     def scheduling_task(self, project_description, deadline=None):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        materials = self.context['materials']
-        tools = self.context['tools']
-        step_by_step_guide = self.context['step_by_step_guide']
-
         return Task(
             description=(
-                f"Using the conversation history: {recent_history}, "
-                f"create a schedule for the project: {project_description}. "
-                f"Base the schedule on the following inputs:\n"
-                f"- Materials provided: {materials}\n"
-                f"- Tools provided: {tools}\n"
-                f"- Step-by-step guide: {step_by_step_guide}\n"
-                f"Provide a table with:\n"
-                f"- Task\n"
-                f"- Duration\n"
-                f"- Recommended number of people\n"
-                f"If a deadline is specified ({deadline}), prioritize tasks to meet it."
+                f"SECOND PHASE - Schedule and Guide Creation:\n"
+                f"Using the conversation history: {recent_history}, create both a schedule and step-by-step guide for the project: {project_description}. "
+                f"The response should include TWO clearly separated sections:\n"
+                f"1. SCHEDULE: A table with Task, Duration, and Recommended number of people\n"
+                f"2. STEP-BY-STEP GUIDE: Detailed instructions for each task\n"
+                f"If a deadline is specified ({deadline}), prioritize tasks to meet it.\n"
+                f"Ensure all safety considerations and prerequisites are included in both sections."
             ),
             agent=self.scheduler_agent(),
             expected_output=(
-                "If more information is needed, respond with 'question:' followed by the missing details.\n"
-                "If sufficient information is provided, return a detailed schedule in markdown format. Example:\n\n"
+                "Return both schedule and guide in markdown format:\n\n"
+                "## Schedule\n"
                 "| Task                | Duration | Recommended People |\n"
                 "|---------------------|----------|--------------------|\n"
                 "| Gather Materials    | 2 days   | 3                  |\n"
-                "| Prep Work Area      | 1 day    | 2                  |\n"
-                "| Perform Repairs     | 3 days   | 4                  |\n\n"
-                "If the project cannot be completed by the deadline, suggest adjustments."
+                "| Prep Work Area      | 1 day    | 2                  |\n\n"
+                "## Step-by-Step Guide\n"
+                "1. Preparation Phase:\n"
+                "   - Gather all materials\n"
+                "   - Set up work area\n"
+                "2. Execution Phase:\n"
+                "   - Detailed steps for execution\n"
+                "3. Final Phase:\n"
+                "   - Clean-up and inspection steps\n"
             )
         )
+
 
     def presentation_task(self, task_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
@@ -715,9 +726,12 @@ class CrewAIChatbot:
 
     def get_response(self, question):
         try:
+            import time # Test code - Kevin - Ernest
             self.context['conversation_history'].append({"role": "user", "content": question})
+            execution_times = {} # Test code - Kevin - Ernest
 
             # Step 0: Check relevance
+            start_time = time.time() # Test code - Kevin - Ernest
             relevance_task = self.check_relevance_task(question)
             relevance_crew = Crew(
                 agents=[relevance_task.agent],
@@ -725,12 +739,15 @@ class CrewAIChatbot:
                 verbose=True
             )
             relevance_result = relevance_crew.kickoff()
+            execution_times['relevance'] = round(time.time() - start_time, 2) # Test code - Kevin - Ernest
+            print(f"Relevance check took: {execution_times['relevance']} seconds") # Test code - Kevin - Ernest
 
-            if relevance_result.lower().startswith('not related:'):
+            if relevance_result.lower().startswith('not related:') or relevance_result.lower().startswith('question:'):
                 return relevance_result.split(':', 1)[1].strip()
 
             # Step 1: Classify project type if undefined
             if not self.context['project_type']:
+                start_time = time.time()  # Test code - Kevin - Ernest
                 classification_task = self.planificator_task(question)
                 classification_crew = Crew(
                     agents=[classification_task.agent],
@@ -740,19 +757,24 @@ class CrewAIChatbot:
                 project_type_result = classification_crew.kickoff()
                 self.context['project_type'] = 'repair' if 'repair' in project_type_result.lower() else 'renovation'
 
+                execution_times['classification'] = round(time.time() - start_time, 2)  # Test code - Kevin - Ernest
+                print(f"Classification took: {execution_times['classification']} seconds")  # Test code - Kevin - Ernest
+
+
             # Sequentially process tasks
             sequential_tasks = [
+                (self.scheduling_task, 'schedule'),
                 (self.materials_task, 'materials'),
                 (self.tools_task, 'tools'),
-                (self.cost_estimation_task, 'cost_estimation'),
-                (self.guide_task, 'step_by_step_guide'),
+#                (self.guide_task, 'step_by_step_guide'),
                 (self.contractor_search_task, 'contractors'),
                 (self.safety_task, 'safety_guidance'),
-                (self.scheduling_task, 'schedule') 
+                (self.cost_estimation_task, 'cost_estimation'),
             ]
 
             for task_method, context_key in sequential_tasks:
                 if not self.context.get(context_key):
+                    start_time = time.time() # Test code - Kevin - Ernest
                     task = task_method(question)
                     crew = Crew(agents=[task.agent], tasks=[task], verbose=True)
                     result = crew.kickoff()
@@ -760,11 +782,27 @@ class CrewAIChatbot:
                     if result.lower().startswith('question:'):
                         return result.split(':', 1)[1].strip()
                     self.context[context_key] = result
+                    execution_times[context_key] = round(time.time() - start_time, 2) # Test code - Kevin - Ernest
+                    print(f"{context_key.replace('_', ' ').title()} took: {execution_times[context_key]} seconds") # Test code - Kevin - Ernest
+
 
             # Step 8: Presentation
+            start_time = time.time() # Test code - Kevin - Ernest
             presentation_task = self.presentation_task(question)
             presentation_crew = Crew(agents=[presentation_task.agent], tasks=[presentation_task], verbose=True)
             final_result = presentation_crew.kickoff()
+            execution_times['presentation'] = round(time.time() - start_time, 2) # Test code - Kevin - Ernest
+            print(f"Presentation took: {execution_times['presentation']} seconds") # Test code - Kevin - Ernest
+
+            # Print total execution time # Test code - Kevin - Ernest
+            total_time = round(sum(execution_times.values()), 2) # Test code - Kevin - Ernest
+            print(f"\nTotal execution time: {total_time} seconds") # Test code - Kevin - Ernest
+
+            # Print execution time summary # Test code - Kevin - Ernest
+            print("\nExecution time summary:") # Test code - Kevin - Ernest
+            for task, time_taken in execution_times.items(): # Test code - Kevin - Ernest
+                percentage = round((time_taken / total_time) * 100, 1) # Test code - Kevin - Ernest
+                print(f"{task.replace('_', ' ').title()}: {time_taken}s ({percentage}%)") # Test code - Kevin - Ernest
 
             # Reset project after response
             self.reset_project()
