@@ -183,16 +183,23 @@ class CrewAIChatbot:
     ##------------------------------------AGENTS------------------------------------
     def relevance_agent(self):
         return Agent(
-            role='Comprehensive Home Improvement Query Analyzer',
-            goal='Thoroughly assess and gather comprehensive context for home improvement queries, ensuring all crucial details are captured.',
+            role='Relevance Checker and Information Gatherer',
+            goal='Determine if a query is related to home improvement projects and gather all necessary information.',
             tools=[],
             verbose=True,
             backstory=(
-                "You are a meticulous home improvement consultant with an exceptional ability to extract and clarify project details. "
-                "Your primary objective is to ensure that every home improvement query is thoroughly understood by asking strategic, "
-                "detailed follow-up questions. You aim to uncover specific information about materials, tools, budget constraints, "
-                "location-specific considerations, and project scope. Your communication is professional, friendly, and guided "
-                "by the principle of gathering complete project context."
+                "You are an expert in home improvement projects with excellent communication skills. "
+                "Your task has TWO parts:\n"
+                "1. Determine if a question is about home repairs, renovations, or any other home improvement task.\n"
+                "2. If it is related, analyze what information would be needed for ALL phases of the project:\n"
+                "   - Dimensions and specifications\n"
+                "   - Material preferences and quantities\n"
+                "   - Tools and equipment needs\n"
+                "   - Budget constraints\n"
+                "   - Timeline requirements\n"
+                "   - Location details\n"
+                "   - Safety considerations\n"
+                "Always respond in the language of the user and ensure all gathered information is complete before proceeding."
             ),
             llm=self.llm
         )
@@ -410,43 +417,37 @@ class CrewAIChatbot:
     def check_relevance_task(self, question):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         history_str = "\n".join([f"{entry['role']}: {entry['content']}" for entry in recent_history])
-        
+
         return Task(
             description=(
-                f"Comprehensive Query Analysis Task:\n\n"
-                f"Recent Conversation History:\n{history_str}\n\n"
-                f"Analyze the query: {question}\n\n"
-                "Your comprehensive assessment should include:\n"
-                "1. Relevance Determination:\n"
-                "   - Is the query directly related to home improvement?\n"
-                "   - If related, what specific home improvement domain does it fall into?\n\n"
-                "2. Context Evaluation:\n"
-                "   - What critical information is missing from the query?\n"
-                "   - What additional details would help provide a more accurate and helpful response?\n\n"
-                "3. Response Framework:\n"
-                "   - If RELATED: Confirm relevance and identify information gaps\n"
-                "   - If NOT RELATED: Redirect with a home improvement suggestion\n"
-                "   - If INCOMPLETE: Generate targeted follow-up questions\n\n"
-                "Specific Follow-up Inquiry Areas:\n"
-                "- Materials Desired/Available\n"
-                "- Current Tools/Equipment\n"
-                "- Budget Constraints (Low/Medium/High)\n"
-                "- Project Location (Indoor/Outdoor, Specific Room)\n"
-                "- Skill Level (DIY/Professional Assistance)\n"
-                "- Time Constraints\n"
-                "- Specific Challenges or Concerns\n\n"
-                "Output Format:\n"
-                "- Begin with 'RELATED: ', 'NOT RELATED: ', or 'INCOMPLETE: '\n"
-                "- Follow with a detailed assessment\n"
-                "- If INCOMPLETE, list specific follow-up questions\n"
-                "- Maintain the user's original language"
+                f"Analyze the following query considering the conversation history:\n\n{history_str}\n\n"
+                f"Query to analyze: {question}\n"
+                f"If the query is NOT related to home improvement, respond with 'NOT RELATED: ' followed by a friendly message that:\n"
+                f"1. Acknowledges the user's question\n"
+                f"2. Gently reminds them that you're specialized in home improvement\n"
+                f"3. Suggests a related home improvement topic.\n"
+                f"If the query IS related, identify what additional information is needed to proceed effectively. This could include:\n"
+                f"- Specific details about the item or area to be repaired\n"
+                f"- Material preferences and quantity requirements\n"
+                f"- Necessary tools and equipment\n"
+                f"- Estimated costs and budget\n"
+                f"- Contractor requirements\n"
+                f"- Safety considerations\n"
+                f"- Timeline for completion\n"
+                f"- Project location\n"
+                f"If ANY of these details are missing, respond with 'question: ' followed by the necessary questions to gather this information.\n"
+                f"If ALL information is provided, respond with 'RELATED: ' and confirm readiness to proceed.\n"
+                f"Ensure responses are in the same language as the user's query."
             ),
             agent=self.relevance_agent(),
             expected_output=(
-                "Comprehensive response starting with 'RELATED: ', 'NOT RELATED: ', or 'INCOMPLETE: ' "
-                "followed by a detailed analysis and potential follow-up questions"
+                "One of three possible responses:\n"
+                "1. 'NOT RELATED: ' followed by friendly redirection in the language of the user\n"
+                "2. 'question: ' followed by necessary questions in the language of the user\n"
+                "3. 'RELATED: ' if the query is related and all information is available\n"
             )
         )
+
 
     def planificator_task(self, question):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
@@ -732,7 +733,7 @@ class CrewAIChatbot:
             if relevance_result.lower().startswith('not related:'):
                 return relevance_result.split(':', 1)[1].strip()
             
-            elif relevance_result.lower().startswith('incomplete:'):
+            elif '?' in relevance_result.lower():
                 # If information is incomplete, provide a prompt for more details
                 return relevance_result.split(':', 1)[1].strip()
             else:
