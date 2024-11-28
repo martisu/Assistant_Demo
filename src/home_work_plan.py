@@ -13,7 +13,7 @@ import yaml
 import os
 import time
 
-def retry_with_backoff(func, max_retries=3):
+def retry_with_backoff(func, max_retries=4):
     def wrapper(*args, **kwargs):
         for i in range(max_retries):
             try:
@@ -451,8 +451,9 @@ class CrewAIChatbot:
                 f"IMPORTANT:\n"
                 f"- DO NOT include phase descriptions or any other prefixes in your response\n"
                 f"- Respond in the same language as the user's query\n"
-                f"- If information is missing, first list what's missing briefly, then ask ONE key question\n"
-                f"- Only ask about user preferences, location, or project requirements and conditions - NOT about technical decisions that your expertise should make (such as tools required).\n"
+                f"- If information is missing, first list what's missing briefly, then ask ONE key question.\n"
+                f"- Only ask about user preferences, location, or project requirements and conditions.\n"
+                f"- Do NOT ask about technical decisions that your expertise should make (such as tools required).\n"
                 f"- Ensure all essential user-specific information is obtained.\n"
                 f"- Vary your phrasing based on previous responses in the conversation history\n"
                 f"- Start DIRECTLY with one of the three specified prefixes"
@@ -490,11 +491,13 @@ class CrewAIChatbot:
                 f"Considering the following recent conversation history:\n\n{history_str}\n\n"
                 f"Analyze the user's query: '{question}' in the context of the conversation and the project type: '{project_type}'.\n\n"
                 f"Determine if additional questions are needed to gather missing details about the project.\n"
-                f"If further clarification is required, respond with 'Question: ' followed by specific, clear, and professional questions tailored to the context. Examples include:\n"
+                f"If further clarification is required, respond with 'Question: ' followed by specific, clear, and professional questions tailored to the context. "
+                f"Examples include:\n"
                 f"- 'What are the dimensions of the area to be worked on?'\n"
                 f"- 'Do you already have some materials or tools available for this project?'\n"
                 f"- 'What is your budget range for this project?'\n\n"
-                f"If no further questions are needed, respond with 'Complete: ' followed by a confirmation message and a summary of the gathered information. Examples include:\n"
+                f"If no further questions are needed, respond with 'Complete: ' followed by a confirmation message and a summary of the gathered information. "
+                f"Examples include:\n"
                 f"- 'Great! Based on what you've shared, I have all the details I need to proceed.'\n"
                 f"- 'Here's a quick summary of what I understand: [summary]. Let me know if I missed anything!'"
             ),
@@ -585,7 +588,7 @@ class CrewAIChatbot:
                 "|----------------|----------------------|------------------------------------|\n"
                 "| Paint          | 15 €/liter          | Eco-paint (20 €/liter)             |\n"
             ),
-            async_execution=True
+#            async_execution=True
         )
 
     @retry_with_backoff
@@ -629,7 +632,8 @@ class CrewAIChatbot:
             ),
             agent=self.contractor_search_agent(),
             expected_output=(
-                "Answer with a list of up to two contractors with their contact information or website links, including details on how to request a budget estimation. For example:\n\n"
+                "Answer with a list of up to two contractors with their contact information or website links, including details on how to request"
+                " a budget estimation. For example:\n\n"
                 "- **Contractor 1**: ABC Renovations\n"
                 "  - Contact: (123) 456-7890\n"
                 "  - Website: [www.abcrenovations.com](http://www.abcrenovations.com)\n"
@@ -734,7 +738,8 @@ class CrewAIChatbot:
             ),
             agent=self.presentation_agent(),
             expected_output=(
-                "Use the language of the user and provide a structured and elegant response in markdown format, organizing all information clearly under distinct headings.\n"
+                "Use the language of the user.\n"
+                "Provide a structured and elegant response in markdown format, organizing all information clearly under distinct headings.\n"
                 "Must be displayed in a table if this is convenient.\n"
                 "Response must include all the following information:\n"
                 "- Materials (all known information including quantity).\n"
