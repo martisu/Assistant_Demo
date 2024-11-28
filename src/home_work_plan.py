@@ -11,10 +11,23 @@ from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 from crewai_tools import ScrapeWebsiteTool
 import yaml
 import os
+import time
+
+def retry_with_backoff(func, max_retries=3):
+    def wrapper(*args, **kwargs):
+        for i in range(max_retries):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                if '429' in str(e) and i < max_retries - 1:
+                    time.sleep(2 ** i)
+                    continue
+                raise
+    return wrapper
 
 class CrewAIChatbot:
 
-    HISTORY_LIMIT = 30  # Length of the history to consider
+    HISTORY_LIMIT = 60  # Length of the history to consider
 
     def __init__(self, credentials_path):
         self.credentials = self.load_credentials(credentials_path)
@@ -197,7 +210,8 @@ class CrewAIChatbot:
                 "   - Timeline requirements\n"
                 "   - Location details\n"
                 "   - Safety considerations\n"
-                "Always respond in the language of the user and ensure all gathered information is complete before proceeding."
+                "Always respond in the language of the user and ensure all gathered information is complete before proceeding. "
+                "Ensure all essential user-specific information is obtained."
             ),
             llm=self.llm
         )
@@ -408,34 +422,40 @@ class CrewAIChatbot:
 
 ##------------------------------------TASKS------------------------------------
     
+    @retry_with_backoff
     def check_relevance_task(self, question):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        history_str = "\n".join([f"{entry['role']}: {entry['content']}" for entry in recent_history])
 
         return Task(
             description=(
-                f"Analyze the following query considering the conversation history:\n{history_str}\n\n"
+                f"Analyze the user's query: {question} in the conversation history:\n{recent_history}\n\n"
                 f"Follow these steps internally (but DO NOT include these steps in your response):\n"
                 f"1. Check if query is related to home improvement\n"
                 f"2. If related, analyze what information is needed\n\n"
+                f"3. Review conversation history to avoid repetitive phrasing\n"
                 f"Then, RESPOND USING EXACTLY ONE of these formats:\n"
                 f"- If not related: Start with 'NOT RELATED: ' followed by friendly redirection\n"
-                f"- If related but missing info: Start with 'question: ' followed by necessary questions\n"
+                f"- If related but missing info: Start with 'QUESTION: ' followed by friendly most important brief missing info summary + ONE question\n"
                 f"- If related and complete: Start with 'RELATED: ' followed by confirmation\n\n"
                 f"IMPORTANT:\n"
                 f"- DO NOT include phase descriptions or any other prefixes in your response\n"
                 f"- Respond in the same language as the user's query\n"
+                f"- If information is missing, first list what's missing briefly, then ask ONE key question\n"
+                f"- Only ask about user preferences, location, or project requirements and conditions - NOT about technical decisions that your expertise should make (such as tools required).\n"
+                f"- Ensure all essential user-specific information is obtained.\n"
+                f"- Vary your phrasing based on previous responses in the conversation history\n"
                 f"- Start DIRECTLY with one of the three specified prefixes"
             ),
             agent=self.relevance_agent(),
             expected_output=(
                 "MUST return EXACTLY ONE of these three formats:\n"
                 "1. 'NOT RELATED: ' followed by friendly redirection in the language of the user\n"
-                "2. 'question: ' followed by ALL necessary questions in the language of the user\n"  
+                "2. 'QUESTION: '  ' followed by brief missing info summary + ONE question\n"
                 "3. 'RELATED: ' if query is related and all information is available\n"
             )
         )
 
+    @retry_with_backoff
     def planificator_task(self, question):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         return Task(
@@ -475,7 +495,7 @@ class CrewAIChatbot:
             )
         )
 
-
+    @retry_with_backoff
     def materials_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         schedule = self.context['schedule']
@@ -498,6 +518,7 @@ class CrewAIChatbot:
             async_execution=True
     )
 
+    @retry_with_backoff
     def tools_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         schedule = self.context['schedule']
@@ -505,7 +526,7 @@ class CrewAIChatbot:
             description=f"Consider the conversation history: {recent_history}."
                         f"List the tools required for the following project: {project_description}. "
                         f"Consider schedule provided in context: {schedule}. "
-                        f"The response should only contain the TOOLS and must NOT include the MATERIALS. ",
+                        f"The response should only contain the TOOLS and their quantities, without including MATERIALS. ",
             agent=self.tools_agent(),
             expected_output=(
                 " Answer with a markdown list of tools and their alternatives, e.g.:\n\n"
@@ -517,6 +538,7 @@ class CrewAIChatbot:
             async_execution=True
     )
  
+    @retry_with_backoff
     def cost_estimation_task(self, materials_list):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         schedule = self.context['schedule']
@@ -542,6 +564,8 @@ class CrewAIChatbot:
                 f"If the user's location is unknown, default to providing costs in euros (€).\n"
                 f"Focus on direct price information (e.g., price per unit) and avoid providing unrelated context or market trends.\n"
                 f"Respond in markdown table format for clarity, showing costs in the relevant currency.\n"
+                f"Respond using the number format (US: 1,234.56 or EU: 1.234,56) and measurement system (metric/imperial) specified by the user. "
+                 "If none specified, use their location's standard. Default to European format (EU numbers, metric) if no location given."
             ),
             agent=self.cost_agent(),
             expected_output=(
@@ -553,7 +577,7 @@ class CrewAIChatbot:
             async_execution=True
         )
 
-    
+    @retry_with_backoff
     def guide_task(self, repair_or_renovation_process):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         materials = self.context['materials']
@@ -576,6 +600,7 @@ class CrewAIChatbot:
             async_execution=True
         )
     
+    @retry_with_backoff
     def contractor_search_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         materials = self.context['materials']
@@ -604,6 +629,7 @@ class CrewAIChatbot:
             async_execution=True
         )
 
+    @retry_with_backoff
     def safety_task(self, task_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         schedule = self.context['schedule']
@@ -629,12 +655,11 @@ class CrewAIChatbot:
                 "- Specific risks associated with each step."
                 "- Protective measures to mitigate risks."
                 "- Areas where extra caution is needed."
-                "If additional information is required, respond with 'question:' followed by a clear request for the missing details."
-                "(Text indicating the missing information needed to provide a complete response, if necessary.)"
             ),
             async_execution=True
         )
 
+    @retry_with_backoff
     def scheduling_task(self, project_description, deadline=None):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         return Task(
@@ -666,7 +691,7 @@ class CrewAIChatbot:
             )
         )
 
-
+    @retry_with_backoff
     def presentation_task(self, task_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         materials = self.context['materials']
@@ -688,25 +713,27 @@ class CrewAIChatbot:
                 f"Consider the question of the user: {task_description}."
                 f"Consider materials in context: {materials}. (Also missing information if there is indicated)." 
                 f"Consider tools in context: {tools}. (Also missing information if there is indicated)."
-                f"Consider step by step guide in context: {step_by_step_guide}. (Also missing information if there is indicated)."
+#                f"Consider step by step guide in context: {step_by_step_guide}. (Also missing information if there is indicated)."
                 f"Consider contractors in context: {contractors}. (Also missing information if there is indicated)."
                 f"Consider cost estimation in context: {cost_estimation}. (Also missing information if there is indicated)."
                 f"Consider safety guidance notes in context: {safety_guidance}. (Also missing information if there is indicated)."
                 f"Consider the schedule in context: {schedule}. (Also missing information if there is indicated)."
+                f"Respond using the number format (US: 1,234.56 or EU: 1.234,56) and measurement system (metric/imperial) specified by the user. "
+                 "If none specified, use their location's standard. Default to European format (EU numbers, metric) if no location given."
             ),
             agent=self.presentation_agent(),
             expected_output=(
                 "Use the language of the user and provide a structured and elegant response in markdown format, organizing all information clearly under distinct headings.\n"
                 "Must be displayed in a table if this is convenient.\n"
                 "Response must include all the following information:\n"
-                "- Materials.\n"
-                "- Tools.\n"
+                "- Materials (all known information including quantity).\n"
+                "- Tools (all known information including quantity).\n"
                 "- Step by step guide.\n"
                 "- Contractors with all available information (name, contact details, etc.).\n"
                 "- Cost estimation.\n"
                 "- Safety guidance notes.\n"
                 "- Project schedule with clear timelines and dependencies.\n"
-                "- Questions asking for missing information if there is any.\n"
+#                "- Questions asking for missing information if there is any.\n"
             )
         )
 
@@ -715,7 +742,7 @@ class CrewAIChatbot:
 
     def get_response(self, question):
         try:
-            import time # Test code - Kevin - Ernest
+
             self.context['conversation_history'].append({"role": "user", "content": question})
             execution_times = {} # Test code - Kevin - Ernest
 
