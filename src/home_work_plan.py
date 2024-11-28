@@ -58,7 +58,7 @@ class CrewAIChatbot:
         )
         self.wrapper = DuckDuckGoSearchAPIWrapper(max_results=2 )
         self.search_tool = DuckDuckGoSearchRun(api_wrapper =self.wrapper, source = "text", backend = "lite" )
-        self.pdf_tools = self.load_pdf_tools()
+        # self.pdf_tools = self.load_pdf_tools()
         
         self.context = {
             'guidance': None,
@@ -270,7 +270,7 @@ class CrewAIChatbot:
         return Agent(
             role='Renovation Expert',
             goal='Provide detailed guidance on home renovation projects.',
-            tools=[self.search_tool] + self.pdf_tools,
+            tools=[self.search_tool], #+ self.pdf_tools,
             verbose=True,
             backstory=(
                 "You are an experienced expert in home renovations. "
@@ -323,7 +323,7 @@ class CrewAIChatbot:
         return Agent(
             role='Cost Determinator',
             goal='Provide cost estimations for materials, considering the user’s location and preferred currency.',
-            tools=[stores_data],
+            tools=[self.search_tool],
             verbose=True,
             backstory=(
                 "You are a cost expert in construction. "
@@ -340,7 +340,7 @@ class CrewAIChatbot:
         return Agent(
             role='Step-by-Step Guide',
             goal='Provide detailed step-by-step instructions for any task.',
-            tools=[self.search_tool] + self.pdf_tools,
+            tools=[self.search_tool],# + self.pdf_tools,
             verbose=True,
             backstory=(
                 "You are an expert guide. Your role is to break down complex tasks into clear, manageable steps."
@@ -388,7 +388,7 @@ class CrewAIChatbot:
         return Agent(
             role='Project Analyzer and Scheduler',
             goal='Analyze project requirements, identify missing information, and create schedule with guidance.',
-            tools=[self.search_tool] + self.pdf_tools,
+            tools=[self.search_tool],# + self.pdf_tools,
             verbose=True,
             backstory=(
                 "You are a comprehensive project analysis expert who first evaluates all needed information "
@@ -543,32 +543,31 @@ class CrewAIChatbot:
  
     @retry_with_backoff
     def cost_estimation_task(self, materials_list):
-        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        schedule = self.context['schedule']
+        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:] 
+        # schedule = self.context['schedule']
         materials = self.context['materials']
-        tools = self.context['tools']
-        location = self.context.get('user_location', 'Europe')
-        currency = self.context.get('currency', '€')
+        # tools = self.context['tools']
+        # location = self.context.get('user_location', 'Spain')
+        # currency = self.context.get('currency', '€')
 
         # Define reference markets based on location context or general applicability
         markets = (
-            "Leroy Merlin, Castorama, OBI, Bricofer, Home Depot, Home Depot Mexico, "
-            "and similar stores based on the user's location."
+            "Leroy Merlin, Obramat"
         )
 
         return Task(
             description=(
                 f"Consider the conversation history: {recent_history}.\n"
                 f"Provide a cost estimation for the following materials: {materials_list}.\n"
-                f"Consider schedule provided in context: {schedule}.\n"
+                # f"Consider schedule provided in context: {schedule}.\n"
                 f"Consider materials provided in context: {materials}.\n"
-                f"Consider tools provided in context: {tools}.\n"
-                f"Use the user's location ({location}) to determine the appropriate markets ({markets}) and currency ({currency}).\n"
+                # f"Consider tools provided in context: {tools}.\n"
+                f"Determine the appropriate markets ({markets}).\n"
                 f"If the user's location is unknown, default to providing costs in euros (€).\n"
                 f"Focus on direct price information (e.g., price per unit) and avoid providing unrelated context or market trends.\n"
                 f"Respond in markdown table format for clarity, showing costs in the relevant currency.\n"
-                f"Respond using the number format (US: 1,234.56 or EU: 1.234,56) and measurement system (metric/imperial) specified by the user. "
-                 "If none specified, use their location's standard. Default to European format (EU numbers, metric) if no location given."
+                f"Respond using the number format (EU 1.234,56) and measurement system (metric). "
+                 "If none specified, use their location's standard. Default to Spain format (EU numbers, metric) if no location given."
             ),
             agent=self.cost_agent(),
             expected_output=(
@@ -606,16 +605,16 @@ class CrewAIChatbot:
     @retry_with_backoff
     def contractor_search_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        materials = self.context['materials']
-        tools = self.context['tools']
+        # materials = self.context['materials']
+        # tools = self.context['tools']
         schedule = self.context['schedule']
         return Task(
             description=(
                 f"Consider the conversation history: {recent_history}."
                 f"Search for a maximum of two contractors who specialize in the following project in the specified location or nearby. "
                 f"Consider materials provided in context: {schedule}. "
-                f"Consider materials provided in context: {materials}. "
-                f"Consider tools provided in context: {tools}. "
+                # f"Consider materials provided in context: {materials}. "
+                # f"Consider tools provided in context: {tools}. "
                 f"Provide contact details or links where the user can request a budget estimation. "
                 f"Ensure the contractors are well-reviewed or reputable, if possible. "
             ),
@@ -637,8 +636,8 @@ class CrewAIChatbot:
     def safety_task(self, task_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         schedule = self.context['schedule']
-        materials = self.context['materials']
-        tools = self.context['tools']
+        # materials = self.context['materials']
+        # tools = self.context['tools']
         step_by_step_guide = self.context['step_by_step_guide']
         return Task(
             description=(
@@ -647,9 +646,9 @@ class CrewAIChatbot:
                 f"The instructions should prioritize accident prevention by outlining each step in detail, highlighting any safety risks,"
                 f"and suggesting appropriate protective measures or precautions. Emphasize where extra caution is needed."
                 f"Consider the question of the user: {task_description}."
-                f"Consider materials in context: {materials}. " 
+                # f"Consider materials in context: {materials}. " 
                 f"Consider schedule in context: {schedule}. " 
-                f"Consider tools in context: {tools}. "
+                # f"Consider tools in context: {tools}. "
                 f"Consider step by step guide in context: {step_by_step_guide}. " 
             ),
             agent=self.safety_agent(),
