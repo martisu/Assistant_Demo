@@ -7,8 +7,10 @@ from langchain_openai.chat_models.azure import AzureChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 
+from playwright.sync_api import sync_playwright
+from langchain.schema import Document
+from langchain.text_splitter import CharacterTextSplitter
 
-from crewai_tools import ScrapeWebsiteTool
 import yaml
 import os
 
@@ -104,56 +106,63 @@ class CrewAIChatbot:
         
         return pdf_tools
     
-    def page_search(self, type_filter):
+    
+    def scrape_pages(self, section_type):
         """
-        Search within the 'Stores' or 'Contractors' section of the YAML file.
-        Performs direct DuckDuckGo search if data is found.
-
+        Generic scraping function for both Stores and Contractors.
         Args:
-            type_filter (str): The type of entries to filter ('stores' or 'contractors').
-
+            section_type (str): Either 'Stores' or 'Contractors', matching the YAML structure.
         Returns:
-            Tool: A CrewAI tool for searching specific sites
+            List[dict]: List of scraped results, each containing name, description, and relevant details from the page.
         """
         try:
-            # Validate type_filter
-            if type_filter not in ["stores", "contractors"]:
-                return {"error": "Invalid type_filter. Choose 'stores' or 'contractors'."}
+            # Load the YAML data
+            file_path = "data/sites/cost&contractors.yaml"
+            with open(file_path, "r") as file:
+                yaml_data = yaml.safe_load(file)
+            
+            pages = yaml_data.get(section_type, [])
+            results = []
 
-            # Load YAML Data
-            with open("data/sites/cost&contractors.yaml", "r") as file:
-                data = yaml.safe_load(file)
+            # Use Playwright to scrape each page
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                for page_data in pages:
+                    page_name = page_data["name"]
+                    page_link = page_data["link"]
+                    page_description = page_data.get("description", "No description available.")
 
-            # Extract the relevant section
-            entries = data.get(type_filter.capitalize(), [])
-            if not entries:
-                return {"error": f"No entries found for {type_filter} in the YAML file."}
+                    page = browser.new_page()
+                    page.goto(page_link)
+                    page.wait_for_timeout(2000)
 
-            # Perform searches for each entry and create a tool
-            def search_sites():
-                search_results = []
-                for entry in entries:
-                    name = entry.get("name")
-                    link = entry.get("link")
-                    description = entry.get("description", "")
-                    
-                    if link:
-                        # Perform the search
-                        query = f"site:{link}"  # Restrict search to the specific store or contractor link
-                        result = self.search_tool.run(query)
-                        search_results.append(f"{name} ({link}):\nDescription: {description}\nSearch Results: {result}")
-                
-                return "\n\n".join(search_results)
+                    # Extract relevant information (adjust selectors as needed)
+                    if section_type == "Stores":
+                        product_titles = page.locator(".product-title").all_inner_texts()
+                        product_prices = page.locator(".product-price").all_inner_texts()
+                        details = [
+                            {"title": title, "price": price}
+                            for title, price in zip(product_titles, product_prices)
+                        ]
+                    elif section_type == "Contractors":
+                        contact_info = page.locator(".contact-info").all_inner_texts()  # Adjust based on page structure
+                        details = {
+                            "contact": contact_info[0] if contact_info else "Contact not found",
+                            "website": page_link,
+                        }
 
-            # Create and return a CrewAI Tool
-            return Tool(
-                name=f"{type_filter.capitalize()} Search Tool",
-                func=search_sites,
-                description=f"Search tool for {type_filter} from predefined sources"
-            )
+                    results.append({
+                        "name": page_name,
+                        "description": page_description,
+                        "details": details,
+                    })
 
+                browser.close()
+            return results
         except Exception as e:
-            return {"error": f"Error occurred: {str(e)}"}
+            return {"error": f"Scraping failed: {e}"}
+
+
 
     def load_credentials(self, path):
         with open(path, "r") as stream:
@@ -314,21 +323,27 @@ class CrewAIChatbot:
         )
     
     def cost_agent(self):
+        """Agent for cost estimation."""
         return Agent(
-            role='Cost Determinator',
-            goal='Provide cost estimations for materials, considering the user’s location and preferred currency.',
-            tools=[self.page_search("stores")],  
+            role="Cost Determinator",
+            goal="Provide cost estimations for materials based on the user’s project description and input query.",
+            tools=[
+                Tool(
+                    name="Store Search",
+                    func=lambda query: self.scrape_pages("Stores", query),
+                    description="Search all predefined stores for material prices and availability."
+                )
+            ],
             verbose=True,
             backstory=(
-                "You are a cost expert in construction. "
-                "Your role is to provide cost estimations for materials or tools, converting them into the currency based on the user's location. "
-                "Default to euros (€) if the user’s location is not specified. "
-                "Perform a targeted search for pricing data and ensure clarity in the response. "
-                "Provide approximate unit prices in the user’s currency or a specified currency. "
-                "Avoid including unrelated context or general market trends."
+                "You are a cost expert specializing in construction materials and tools. "
+                "Your primary task is to assist users by searching predefined store pages for material prices "
+                "and availability based on their project descriptions or specific queries. "
+                "Focus on providing accurate and concise cost estimations in a clear format."
             ),
             llm=self.llm
         )
+
     
     def guide_agent(self):
         return Agent(
@@ -347,19 +362,25 @@ class CrewAIChatbot:
         )
     
     def contractor_search_agent(self):
+        """Agent for searching contractors."""
         return Agent(
-            role='Contractor Finder',
-            goal='Search for contractors who can handle home improvement projects and provide contact details or links for budget estimation.',
-            tools=[self.page_search("contractors")],
+            role="Contractor Finder",
+            goal="Identify and recommend contractors relevant to the user’s project description or needs.",
+            tools=[
+                Tool(
+                    name="Contractor Search",
+                    func=lambda query: self.scrape_pages("Contractors", query),
+                    description="Search all predefined contractors and provide relevant contact and service details."
+                )
+            ],
             verbose=True,
             backstory=(
-                "You are an expert in finding reliable contractors for home improvement projects. "
-                "Your role is to find contractors based on the user’s project description, preferably near their location. "
-                "Search for relevant contractor listings, company websites, and review aggregators, and provide contact details or links where they can request a budget. "
-                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
+                "You are a contractor search expert focused on connecting users with reliable professionals for their home improvement needs. "
+                "Search predefined contractor listings for service details and contact information, ensuring relevance to the user’s query."
             ),
             llm=self.llm
         )
+
     
     def safety_agent(self):
         return Agent(
@@ -526,39 +547,43 @@ class CrewAIChatbot:
     )
  
     def cost_estimation_task(self, materials_list):
-        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        schedule = self.context['schedule']
-        materials = self.context['materials']
-        tools = self.context['tools']
-        location = self.context.get('user_location', 'Europe')
-        currency = self.context.get('currency', '€')
+        """
+        Task to estimate costs for a given list of materials using predefined store pages.
+        """
+        # Ensure the materials_list is valid
+        if not materials_list:
+            materials_list = self.context.get('materials', [])
+            if not materials_list:
+                return {"error": "No materials specified for cost estimation."}
 
-        # Define reference markets based on location context or general applicability
-        markets = (
-            "Leroy Merlin, Castorama, OBI, Bricofer, Home Depot, Home Depot Mexico, "
-            "and similar stores based on the user's location."
-        )
+        # Fetch relevant context
+        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
+        schedule = self.context.get('schedule', "No schedule provided.")
+        tools = self.context.get('tools', [])
+        currency = self.context.get('currency', '€')
 
         return Task(
             description=(
-                f"Consider the conversation history: {recent_history}.\n"
-                f"Provide a cost estimation for the following materials: {materials_list}.\n"
-                f"Consider schedule provided in context: {schedule}.\n"
-                f"Consider materials provided in context: {materials}.\n"
-                f"Consider tools provided in context: {tools}.\n"
-                f"Use the user's location ({location}) to determine the appropriate markets ({markets}) and currency ({currency}).\n"
-                f"If the user's location is unknown, default to providing costs in euros (€).\n"
-                f"Focus on direct price information (e.g., price per unit) and avoid providing unrelated context or market trends.\n"
-                f"Respond in markdown table format for clarity, showing costs in the relevant currency.\n"
+                f"Estimate the cost of the following materials: {materials_list}.\n\n"
+                f"Context:\n"
+                f"- Currency: {currency}\n"
+                f"- Tools in Context: {tools if tools else 'No tools provided.'}\n"
+                f"- Schedule: {schedule}\n\n"
+                f"Use the predefined store pages to search for the materials. Scrape the results directly and provide:\n"
+                f"1. Unit prices for each material.\n"
+                f"2. Alternatives if available.\n"
+                f"Respond in markdown table format for clarity."
             ),
             agent=self.cost_agent(),
             expected_output=(
-                "Respond with a markdown table of costs, referencing the relevant markets and using the appropriate currency. For example:\n\n"
-                "| Material        | Cost (in {currency})  | Alternatives                       |\n"
-                "|----------------|----------------------|------------------------------------|\n"
-                "| Paint          | 15 €/liter          | Eco-paint (20 €/liter)             |\n"
+                "Respond with a markdown table showing costs in the specified currency. Example format:\n\n"
+                "| Material        | Unit Price ({currency}) | Store                  | Alternatives              |\n"
+                "|-----------------|-------------------------|------------------------|---------------------------|\n"
+                "| Cement Bag      | 12.50                  | Leroy Merlin           | Eco Cement (11.00)        |\n"
+                "| Paint (White)   | 15.00                  | Brico Dépôt            | Matte Paint (20.00)       |\n"
             )
         )
+
 
     
     def guide_task(self, repair_or_renovation_process):
@@ -584,31 +609,37 @@ class CrewAIChatbot:
         )
     
     def contractor_search_task(self, project_description):
+        """
+        Task to search for contractors relevant to a given project description.
+        """
+        # Fetch relevant context
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        materials = self.context['materials']
-        tools = self.context['tools']
-        schedule = self.context['schedule']
+        materials = self.context.get('materials', [])
+        tools = self.context.get('tools', [])
+        schedule = self.context.get('schedule', "No schedule provided.")
+
         return Task(
             description=(
-                f"Consider the conversation history: {recent_history}."
-                f"Search for a maximum of two contractors who specialize in the following project in the specified location or nearby. "
-                f"Consider materials provided in context: {schedule}. "
-                f"Consider materials provided in context: {materials}. "
-                f"Consider tools provided in context: {tools}. "
-                f"Provide contact details or links where the user can request a budget estimation. "
-                f"Ensure the contractors are well-reviewed or reputable, if possible. "
+                f"Search for contractors who can assist with the following project description: {project_description}.\n\n"
+                f"Context:\n"
+                f"- Materials in Context: {materials if materials else 'No materials provided.'}\n"
+                f"- Tools in Context: {tools if tools else 'No tools provided.'}\n"
+                f"- Schedule: {schedule}\n\n"
+                f"Use the predefined contractor pages to identify reputable contractors, and provide:\n"
+                f"1. Names of contractors.\n"
+                f"2. Contact details (phone or email).\n"
+                f"3. Website links to request a budget estimation."
             ),
             agent=self.contractor_search_agent(),
             expected_output=(
-                "Answer with a list of up to two contractors with their contact information or website links, including details on how to request a budget estimation. For example:\n\n"
+                "Provide a list of up to two contractors in markdown format. Example format:\n\n"
                 "- **Contractor 1**: ABC Renovations\n"
                 "  - Contact: (123) 456-7890\n"
                 "  - Website: [www.abcrenovations.com](http://www.abcrenovations.com)\n"
                 "- **Contractor 2**: Home Fix Pros\n"
                 "  - Contact: (987) 654-3210\n"
                 "  - Website: [www.homefixpros.com](http://www.homefixpros.com)\n"
-            ),
-            async_execution=True
+            )
         )
 
     def safety_task(self, task_description):
