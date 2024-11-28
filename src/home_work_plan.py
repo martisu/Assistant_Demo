@@ -45,7 +45,7 @@ class CrewAIChatbot:
         )
         self.wrapper = DuckDuckGoSearchAPIWrapper(max_results=2 )
         self.search_tool = DuckDuckGoSearchRun(api_wrapper =self.wrapper, source = "text", backend = "lite" )
-        # self.pdf_tools = self.load_pdf_tools()
+        self.pdf_tools = self.load_pdf_tools()
         
         self.context = {
             'guidance': None,
@@ -60,103 +60,91 @@ class CrewAIChatbot:
             'conversation_history': []
         }
 
-    # def load_pdf_tools(self):
-    #     pdf_tools = []
-    #     pdf_dir = "data/"
-    #     text_splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    def load_pdf_tools(self):
+        pdf_tools = []
+        pdf_dir = "data/"
+        text_splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
         
-    #     for filename in os.listdir(pdf_dir):
-    #         if filename.endswith(".pdf"):
-    #             pdf_path = os.path.join(pdf_dir, filename)
-    #             loader = PyPDFLoader(pdf_path)
+        for filename in os.listdir(pdf_dir):
+            if filename.endswith(".pdf"):
+                pdf_path = os.path.join(pdf_dir, filename)
+                loader = PyPDFLoader(pdf_path)
                 
-    #             # Load and split the PDF
-    #             try:
-    #                 documents = loader.load_and_split(text_splitter)
-    #                 print(f"Documents loaded for {filename}: {documents[:5]}")  # Debugging
+                # Load and split the PDF
+                try:
+                    documents = loader.load_and_split(text_splitter)
+                    print(f"Documents loaded for {filename}: {documents[:5]}")  # Debugging
                     
-    #                 # Handle documents properly based on their structure
-    #                 if documents and isinstance(documents[0], str):
-    #                     # Handle case where documents are plain strings
-    #                     limited_documents = documents[:5]
-    #                     pdf_tool = Tool(
-    #                         name=f"PDF_Reader_{filename}",
-    #                         func=lambda docs=limited_documents: "\n".join(docs),
-    #                         description=f"Use this tool to read and extract information from the PDF file {filename}"
-    #                     )
-    #                 elif documents and hasattr(documents[0], "page_content"):
-    #                     # Handle case where documents are objects with 'page_content'
-    #                     limited_documents = documents[:5]
-    #                     pdf_tool = Tool(
-    #                         name=f"PDF_Reader_{filename}",
-    #                         func=lambda docs=limited_documents: "\n".join([doc.page_content for doc in docs]),
-    #                         description=f"Use this tool to read and extract information from the PDF file {filename}"
-    #                     )
-    #                 else:
-    #                     print(f"Unexpected structure for documents in {filename}: {documents}")
-    #                     continue  # Skip if structure is not as expected
+                    # Handle documents properly based on their structure
+                    if documents and isinstance(documents[0], str):
+                        # Handle case where documents are plain strings
+                        limited_documents = documents[:5]
+                        pdf_tool = Tool(
+                            name=f"PDF_Reader_{filename}",
+                            func=lambda docs=limited_documents: "\n".join(docs),
+                            description=f"Use this tool to read and extract information from the PDF file {filename}"
+                        )
+                    elif documents and hasattr(documents[0], "page_content"):
+                        # Handle case where documents are objects with 'page_content'
+                        limited_documents = documents[:5]
+                        pdf_tool = Tool(
+                            name=f"PDF_Reader_{filename}",
+                            func=lambda docs=limited_documents: "\n".join([doc.page_content for doc in docs]),
+                            description=f"Use this tool to read and extract information from the PDF file {filename}"
+                        )
+                    else:
+                        print(f"Unexpected structure for documents in {filename}: {documents}")
+                        continue  # Skip if structure is not as expected
 
-    #                 pdf_tools.append(pdf_tool)
+                    pdf_tools.append(pdf_tool)
                 
-    #             except Exception as e:
-    #                 print(f"Error loading or splitting PDF {filename}: {e}")
-    #                 continue  # Skip problematic PDFs
+                except Exception as e:
+                    print(f"Error loading or splitting PDF {filename}: {e}")
+                    continue  # Skip problematic PDFs
         
-    #     return pdf_tools
+        return pdf_tools
     
-    def cost_search(self, country_filter="Spain"):
+    def page_search(self, type_filter):
         """
-        Search within the 'Costs' section of the YAML file and filter by country if provided.
-        Falls back to direct DuckDuckGo search if country not in YAML.
-        
+        Search within the 'Stores' or 'Contractors' section of the YAML file.
+        Performs direct DuckDuckGo search if no data is found.
+
         Args:
-            country_filter (str, optional): The country to limit the search to (e.g., 'Spain').
-        
+            type_filter (str): The type of entries to filter ('stores' or 'contractors').
+
         Returns:
             dict: A dictionary of URLs and their respective search results or an error message.
         """
         try:
-            # Step 1: Load YAML Data
-            with open("data/sites/cost.yaml", "r") as file:
+            # Step 1: Validate type_filter
+            if type_filter not in ["stores", "contractors"]:
+                return {"error": "Invalid type_filter. Choose 'stores' or 'contractors'."}
+
+            # Step 2: Load YAML Data
+            with open("data/sites/cost&contractors.yaml", "r") as file:
                 data = yaml.safe_load(file)
-            
-            # Step 2: Check if country exists in YAML
-            available_countries = [entry.get("country") for entry in data]
-            
-            # If country not in YAML, do direct DuckDuckGo search
-            if country_filter not in available_countries:
-                query = f"construction materials cost prices {country_filter} hardware store building supplies"
-                direct_result = self.search_tool.run(query)
-                return {
-                    "direct_search": {
-                        "country": country_filter,
-                        "search_type": "direct",
-                        "results": direct_result
-                    }
-                }
-            
-            # Step 3: Filter by country if it exists in YAML
-            costs_data = [entry for entry in data if entry.get("country") == country_filter]
-            
-            # Step 4: Extract links from the section
+
+            # Step 3: Extract the relevant section
+            entries = data.get(type_filter.capitalize(), [])
+            if not entries:
+                return {"error": f"No entries found for {type_filter} in the YAML file."}
+
+            # Step 4: Perform searches for each entry
             search_results = {}
-            for entry in costs_data:
-                country = entry.get("country")
-                stores = entry.get("stores", [])
-                for store in stores:
-                    name = store.get("name")
-                    link = store.get("link")
-                    if link:
-                        # Perform the search
-                        query = f"site:{link}"  # Restrict search to the specific store link
-                        result = self.search_tool.run(query)
-                        search_results[f"{country} - {name}"] = result
-            
+            for entry in entries:
+                name = entry.get("name")
+                link = entry.get("link")
+                if link:
+                    # Perform the search
+                    query = f"site:{link}"  # Restrict search to the specific store or contractor link
+                    result = self.search_tool.run(query)
+                    search_results[name] = result
+
             # Return the search results
             return search_results
 
         except Exception as e:
-            return f"Error occurred: {str(e)}"
+            return {"error": f"Error occurred: {str(e)}"}
 
     def load_credentials(self, path):
         with open(path, "r") as stream:
@@ -268,7 +256,7 @@ class CrewAIChatbot:
         return Agent(
             role='Renovation Expert',
             goal='Provide detailed guidance on home renovation projects.',
-            tools=[self.search_tool],#+ self.pdf_tools,
+            tools=[self.search_tool] + self.pdf_tools,
             verbose=True,
             backstory=(
                 "You are an experienced expert in home renovations. "
@@ -317,10 +305,11 @@ class CrewAIChatbot:
         )
     
     def cost_agent(self):
+        stores_data = self.page_search("stores")
         return Agent(
             role='Cost Determinator',
             goal='Provide cost estimations for materials, considering the user’s location and preferred currency.',
-            tools=[self.search_tool],
+            tools=[stores_data],
             verbose=True,
             backstory=(
                 "You are a cost expert in construction. "
@@ -337,7 +326,7 @@ class CrewAIChatbot:
         return Agent(
             role='Step-by-Step Guide',
             goal='Provide detailed step-by-step instructions for any task.',
-            tools=[self.search_tool], #+ self.pdf_tools,
+            tools=[self.search_tool] + self.pdf_tools,
             verbose=True,
             backstory=(
                 "You are an expert guide. Your role is to break down complex tasks into clear, manageable steps."
@@ -532,6 +521,7 @@ class CrewAIChatbot:
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         schedule = self.context['schedule']
         materials = self.context['materials']
+        tools = self.context['tools']
         location = self.context.get('user_location', 'Europe')
         currency = self.context.get('currency', '€')
 
@@ -547,6 +537,7 @@ class CrewAIChatbot:
                 f"Provide a cost estimation for the following materials: {materials_list}.\n"
                 f"Consider schedule provided in context: {schedule}.\n"
                 f"Consider materials provided in context: {materials}.\n"
+                f"Consider tools provided in context: {tools}.\n"
                 f"Use the user's location ({location}) to determine the appropriate markets ({markets}) and currency ({currency}).\n"
                 f"If the user's location is unknown, default to providing costs in euros (€).\n"
                 f"Focus on direct price information (e.g., price per unit) and avoid providing unrelated context or market trends.\n"
@@ -583,9 +574,6 @@ class CrewAIChatbot:
                 "5. Final touches and clean-up instructions.\n"
             ),
             async_execution=True
-            ),
-            async_execution=True
-
         )
     
     def contractor_search_task(self, project_description):
@@ -625,6 +613,7 @@ class CrewAIChatbot:
         return Task(
             description=(
                 f"Consider the conversation history: {recent_history}."
+                f"Provide a careful, safety-focused guide for the following task: {task_description}. "
                 f"The instructions should prioritize accident prevention by outlining each step in detail, highlighting any safety risks,"
                 f"and suggesting appropriate protective measures or precautions. Emphasize where extra caution is needed."
                 f"Consider the question of the user: {task_description}."
@@ -648,10 +637,6 @@ class CrewAIChatbot:
 
     def scheduling_task(self, project_description, deadline=None):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        materials = self.context['materials']
-        tools = self.context['tools']
-        step_by_step_guide = self.context['step_by_step_guide']
-
         return Task(
             description=(
                 f"SECOND PHASE - Schedule and Guide Creation:\n"
@@ -721,6 +706,7 @@ class CrewAIChatbot:
                 "- Cost estimation.\n"
                 "- Safety guidance notes.\n"
                 "- Project schedule with clear timelines and dependencies.\n"
+                "- Questions asking for missing information if there is any.\n"
             )
         )
 
@@ -750,6 +736,7 @@ class CrewAIChatbot:
 
             # Step 1: Classify project type if undefined
             if not self.context['project_type']:
+                start_time = time.time()  # Test code - Kevin - Ernest
                 classification_task = self.planificator_task(question)
                 classification_crew = Crew(
                     agents=[classification_task.agent],
@@ -758,6 +745,10 @@ class CrewAIChatbot:
                 )
                 project_type_result = classification_crew.kickoff()
                 self.context['project_type'] = 'repair' if 'repair' in project_type_result.lower() else 'renovation'
+
+                execution_times['classification'] = round(time.time() - start_time, 2)  # Test code - Kevin - Ernest
+                print(f"Classification took: {execution_times['classification']} seconds")  # Test code - Kevin - Ernest
+
 
             # Sequentially process tasks
             sequential_tasks = [
@@ -806,7 +797,7 @@ class CrewAIChatbot:
             self.reset_project()
 
             self.context['conversation_history'].append({"role": "assistant", "content": final_result})
-            
+
             return final_result
 
         except AttributeError as e:
