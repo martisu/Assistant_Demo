@@ -11,18 +11,6 @@ Stores:
   - name: Bauhaus
     link: https://www.bauhaus.es/
     description: "Offers an extensive range of DIY products, tools, and materials for home improvement and garden projects."
-  - name: Aki
-    link: https://www.aki.es/
-    description: "Focused on DIY enthusiasts and home improvement, Aki provides a variety of affordable solutions."
-  - name: ManoMano
-    link: https://www.manomano.es/
-    description: "An online marketplace for DIY, gardening, and home improvement products, connecting customers with numerous suppliers."
-  - name: Porcelanosa
-    link: https://www.porcelanosa.com/
-    description: "Renowned for its premium ceramic tiles, kitchen, and bathroom equipment, offering high-quality home improvement materials."
-  - name: BricoKing
-    link: https://www.bricoking.es/
-    description: "Offers a diverse selection of products for home improvement, DIY, and garden projects at competitive prices."
 
 Contractors:
   - name: Handyman In Barcelona
@@ -34,18 +22,3 @@ Contractors:
   - name: MiDan Home
     link: https://www.houzz.com/professionals/general-contractor/spain-probr0-bo~t_11786~r_2510769
     description: "Specialists in comprehensive home renovations, offering services in Madrid and surrounding areas."
-  - name: Almeria Builders
-    link: https://almeriabuilders.com/
-    description: "Offers a one-stop solution for all home improvement needs in Almeria, including renovations, swimming pool installations, and repairs."
-  - name: Costa Blanca Builders (MBE Builders)
-    link: https://costa-blanca-builders.com/
-    description: "Provides a range of building services from window and door replacements to complete remodeling and reforms in the Costa Blanca region."
-  - name: Complete Improvements
-    link: https://www.completeimprovements.net/
-    description: "A respected building contractor and joinery company based in Murcia, catering to projects from kitchen replacements to extension works."
-  - name: MB Hormigo
-    link: https://mbhormigo.com/
-    description: "Specialists in construction and renovation, offering services including residential building, extensions, and roofing in Estepona and neighboring areas."
-  - name: J&V Montajes y Reparaciones
-    link: https://www.houzz.com/professionals/handyman/madrid-29-es-probr0-bo~t_27204~r_101165600
-    description: "Provides professional assembly and repair services in Madrid, known for efficiency and quality workmanship."

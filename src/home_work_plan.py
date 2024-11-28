@@ -107,41 +107,50 @@ class CrewAIChatbot:
     def page_search(self, type_filter):
         """
         Search within the 'Stores' or 'Contractors' section of the YAML file.
-        Performs direct DuckDuckGo search if no data is found.
+        Performs direct DuckDuckGo search if data is found.
 
         Args:
             type_filter (str): The type of entries to filter ('stores' or 'contractors').
 
         Returns:
-            dict: A dictionary of URLs and their respective search results or an error message.
+            Tool: A CrewAI tool for searching specific sites
         """
         try:
-            # Step 1: Validate type_filter
+            # Validate type_filter
             if type_filter not in ["stores", "contractors"]:
                 return {"error": "Invalid type_filter. Choose 'stores' or 'contractors'."}
 
-            # Step 2: Load YAML Data
+            # Load YAML Data
             with open("data/sites/cost&contractors.yaml", "r") as file:
                 data = yaml.safe_load(file)
 
-            # Step 3: Extract the relevant section
+            # Extract the relevant section
             entries = data.get(type_filter.capitalize(), [])
             if not entries:
                 return {"error": f"No entries found for {type_filter} in the YAML file."}
 
-            # Step 4: Perform searches for each entry
-            search_results = {}
-            for entry in entries:
-                name = entry.get("name")
-                link = entry.get("link")
-                if link:
-                    # Perform the search
-                    query = f"site:{link}"  # Restrict search to the specific store or contractor link
-                    result = self.search_tool.run(query)
-                    search_results[name] = result
+            # Perform searches for each entry and create a tool
+            def search_sites():
+                search_results = []
+                for entry in entries:
+                    name = entry.get("name")
+                    link = entry.get("link")
+                    description = entry.get("description", "")
+                    
+                    if link:
+                        # Perform the search
+                        query = f"site:{link}"  # Restrict search to the specific store or contractor link
+                        result = self.search_tool.run(query)
+                        search_results.append(f"{name} ({link}):\nDescription: {description}\nSearch Results: {result}")
+                
+                return "\n\n".join(search_results)
 
-            # Return the search results
-            return search_results
+            # Create and return a CrewAI Tool
+            return Tool(
+                name=f"{type_filter.capitalize()} Search Tool",
+                func=search_sites,
+                description=f"Search tool for {type_filter} from predefined sources"
+            )
 
         except Exception as e:
             return {"error": f"Error occurred: {str(e)}"}
@@ -305,11 +314,10 @@ class CrewAIChatbot:
         )
     
     def cost_agent(self):
-        stores_data = self.page_search("stores")
         return Agent(
             role='Cost Determinator',
             goal='Provide cost estimations for materials, considering the user’s location and preferred currency.',
-            tools=[stores_data],
+            tools=[self.page_search("stores")],  
             verbose=True,
             backstory=(
                 "You are a cost expert in construction. "
@@ -342,7 +350,7 @@ class CrewAIChatbot:
         return Agent(
             role='Contractor Finder',
             goal='Search for contractors who can handle home improvement projects and provide contact details or links for budget estimation.',
-            tools=[self.search_tool],
+            tools=[self.page_search("contractors")],
             verbose=True,
             backstory=(
                 "You are an expert in finding reliable contractors for home improvement projects. "
@@ -549,8 +557,7 @@ class CrewAIChatbot:
                 "| Material        | Cost (in {currency})  | Alternatives                       |\n"
                 "|----------------|----------------------|------------------------------------|\n"
                 "| Paint          | 15 €/liter          | Eco-paint (20 €/liter)             |\n"
-            ),
-            async_execution=True
+            )
         )
 
     
