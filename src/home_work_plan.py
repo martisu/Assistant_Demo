@@ -6,6 +6,8 @@ from langchain.tools import Tool
 from langchain_openai.chat_models.azure import AzureChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
+from threading import Event
+from threading import Thread
 
 
 from crewai_tools import ScrapeWebsiteTool
@@ -13,34 +15,46 @@ import yaml
 import os
 import time
 
-def retry_with_backoff(func, max_retries=4):
+def retry_with_backoff(func, max_retries=30):
     def wrapper(*args, **kwargs):
         for i in range(max_retries):
             try:
                 return func(*args, **kwargs)
             except Exception as e:
                 if '429' in str(e) and i < max_retries - 1:
-                    time.sleep(2 ** i)
+#                    wait_tmp = random.randint(1, 10)
+                    wait_tmp = i + random.uniform(1, 5)
+                    print('==================', wait_tmp)
+                    time.sleep(wait_tmp)
                     continue
                 raise
     return wrapper
 
 class CrewAIChatbot:
 
-    HISTORY_LIMIT = 60  # Length of the history to consider
+    HISTORY_LIMIT = 50  # Length of the history to consider
 
     def __init__(self, credentials_path):
         self.credentials = self.load_credentials(credentials_path)
 
-        self.task_dependencies = {
-            'schedule': set(),  
-            'materials': {'schedule'},  
-            'tools': {'schedule'}, 
-            'step_by_step_guide': {'schedule'}, 
-            'contractors': {'schedule'}, 
-            'safety_guidance': {'schedule'}, 
-            'cost_estimation': {'schedule', 'materials', 'tools'} 
+        # Initialize task events
+        self.task_events = {
+#            'schedule': Event(),
+            'materials': Event(),
+            'tools': Event(),
+            'contractors': Event(),
+            'safety_guidance': Event(),
+            'cost_estimation': Event()
         }
+
+        self.task_dependencies = {
+            'materials': set(),  
+            'tools': set(),      
+            'contractors': set(),
+            'safety_guidance': set(),
+            'cost_estimation': {'materials', 'tools'} 
+        }
+
 
         # Set OpenAI API key in environment variables
         os.environ["AZURE_API_KEY"] = self.credentials["AZURE_API_KEY"]
@@ -52,8 +66,9 @@ class CrewAIChatbot:
             openai_api_key=os.environ["AZURE_API_KEY"],
             azure_endpoint=os.environ["AZURE_API_BASE"], 
             openai_api_version=os.environ["AZURE_API_VERSION"],
-            openai_api_type="azure", 
-            temperature=0.1
+            openai_api_type="azure",
+            temperature=0.1,
+#            max_tokens = 250
 
         )
         self.wrapper = DuckDuckGoSearchAPIWrapper(max_results=2 )
@@ -67,6 +82,7 @@ class CrewAIChatbot:
             'materials': [],
             'tools': [],
             'cost_estimation': None,
+            'schedule': None,
             'step_by_step_guide': None,
             'contractors': [],
             'safety_guidance': None,
@@ -184,11 +200,33 @@ class CrewAIChatbot:
             'materials': [],
             'tools': [],
             'cost_estimation': None,
+            'schedule': None,
             'step_by_step_guide': None,
             'contractors': [],
             'safety_guidance': None,
             'conversation_history': conversation_history,
         }
+        # Reset all events
+        for event in self.task_events.values():
+            event.clear()
+
+
+
+    def execute_task(self, task_method, context_key, question, execution_times):
+            """Execute a single task in a separate thread"""
+            start_time = time.time()
+            task = task_method(question)
+            crew = Crew(agents=[task.agent], tasks=[task], verbose=True)
+            result = crew.kickoff()
+                
+            if not result.lower().startswith('question:'):
+                self.context[context_key] = result
+                self.task_events[context_key].set()
+                print(f"Task {context_key} completed and event set")
+                    
+            execution_times[context_key] = round(time.time() - start_time, 2)
+            print(f"{context_key.replace('_', ' ').title()} took: {execution_times[context_key]} seconds")
+
 
     def load_scrape_tools(self, source_type):
         """Load scraping tools based on the specified source type (either 'websites' or 'tools')."""
@@ -337,31 +375,31 @@ class CrewAIChatbot:
             tools=[self.search_tool],
             verbose=True,
             backstory=(
-                "You are a cost expert in construction. "
-                "Your role is to provide cost estimations for materials or tools, converting them into the currency based on the user's location. "
-                "Default to euros (€) if the user’s location is not specified. "
-                "Perform a targeted search for pricing data and ensure clarity in the response. "
+                "You are a VERY quick and efficient construction cost estimator. "
+                "Your role is to provide cost estimations for materials and tools"
+#                "Default to euros (€) if the user’s location is not specified. "
+#                "Perform a targeted search for pricing data and ensure clarity in the response. "
                 "Provide approximate unit prices in the user’s currency or a specified currency. "
                 "Avoid including unrelated context or general market trends."
             ),
             llm=self.llm
         )
     
-    def guide_agent(self):
-        return Agent(
-            role='Step-by-Step Guide',
-            goal='Provide detailed step-by-step instructions for any task.',
-            tools=[self.search_tool] + self.pdf_tools,
-            verbose=True,
-            backstory=(
-                "You are an expert guide. Your role is to break down complex tasks into clear, manageable steps."
-                "Always ensure the instructions are simple and precise, adjusting based on the user's feedback."
-                "Provide explanations for each step, but keep them concise."
-                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise." 
-                "Respond using the currency of the user’s location if specified; otherwise, default to euros."
-            ),
-            llm=self.llm
-        )
+#    def guide_agent(self):
+#        return Agent(
+##            role='Step-by-Step Guide',
+#            goal='Provide detailed step-by-step instructions for any task.',
+#            tools=[self.search_tool] + self.pdf_tools,
+#            verbose=True,
+#            backstory=(
+#                "You are an expert guide. Your role is to break down complex tasks into clear, manageable steps."
+#                "Always ensure the instructions are simple and precise, adjusting based on the user's feedback."
+#                "Provide explanations for each step, but keep them concise."
+#                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise." 
+#                "Respond using the currency of the user’s location if specified; otherwise, default to euros."
+#            ),
+#            llm=self.llm
+#        )
     
     def contractor_search_agent(self):
         return Agent(
@@ -402,11 +440,8 @@ class CrewAIChatbot:
             tools=[self.search_tool] + self.pdf_tools,
             verbose=True,
             backstory=(
-                "You are a comprehensive project analysis expert who first evaluates all needed information "
-                "for the entire project lifecycle including materials, tools, costs, safety, and execution. "
-                "Your primary responsibility is to identify ANY missing information that would be needed by ANY phase "
-                "of the project (materials selection, tool requirements, cost estimation, contractor selection, etc). "
-                "Only after ALL information is available, you create a detailed schedule and step-by-step guide. "
+                "You are a quick and eficient project analysis expert for work planning. "
+                "You create a detailed schedule and step-by-step guide. "
                 "You think systematically about ALL aspects that other specialists would need to know: "
                 "dimensions, materials preferences, budget constraints, timeline requirements, location details, "
                 "specific requirements for contractors, safety considerations, etc."
@@ -422,7 +457,7 @@ class CrewAIChatbot:
             tools=[],  
             verbose=True,
             backstory=(
-                "You are a presentation expert responsible for assembling and presenting all project information "
+                "You are VERY quick and efficient presentation expert responsible for presenting project information "
                 "in a clear and structured format. Your role is to create a coherent response that includes project guidance, "
                 "required materials, tools, cost estimation, step-by-step guide, and recommended contractors. "
                 "Ensure the response is understandable, visually organized, and presented in the user's language."
@@ -452,9 +487,10 @@ class CrewAIChatbot:
                 f"- DO NOT include phase descriptions or any other prefixes in your response\n"
                 f"- Respond in the same language as the user's query\n"
                 f"- If information is missing, first list what's missing briefly, then ask ONE key question.\n"
-                f"- Only ask about user preferences, location, or project requirements and conditions.\n"
+#                f"- Only ask about user preferences, location, or project requirements and conditions.\n"
                 f"- Do NOT ask about technical decisions that your expertise should make (such as tools required).\n"
-                f"- Ensure all essential user-specific information is obtained.\n"
+#                f"- Ensure all essential user-specific information is obtained, such as (preferences, location, requerimetns, codnconditions, etc ).\n"
+                f"- This essential information must not be missing: Preferences, location, requerimetns, codnconditions.\n"
                 f"- Vary your phrasing based on previous responses in the conversation history\n"
                 f"- Start DIRECTLY with one of the three specified prefixes"
             ),
@@ -463,7 +499,7 @@ class CrewAIChatbot:
                 "MUST return EXACTLY ONE of these three formats:\n"
                 "1. 'NOT RELATED: ' followed by friendly redirection in the language of the user\n"
                 "2. 'QUESTION: '  ' followed by brief missing info summary + ONE question\n"
-                "3. 'RELATED: ' if query is related and all information is available\n"
+                "3. 'RELATED'\n"
             )
         )
 
@@ -513,6 +549,7 @@ class CrewAIChatbot:
     def materials_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         schedule = self.context['schedule']
+        print('schedule::::::::::::::::::::::::', schedule)
         return Task(
             description=f"Consider the conversation history: {recent_history}."
                         f"Consider schedule provided in context: {schedule}. "
@@ -521,6 +558,7 @@ class CrewAIChatbot:
                         f"Include alternatives where applicable. ",
             agent=self.materials_agent(),
             expected_output=(
+                " Response using the minimum characters needed\n"
                 " Answer with a markdown list of materials, including the estimated required quantities and alternatives, e.g.:\n\n"
                 "- **Material 1**: High-quality cement\n"
                 "  - Quantity: 10 kg\n"
@@ -543,6 +581,7 @@ class CrewAIChatbot:
                         f"The response should only contain the TOOLS and their quantities, without including MATERIALS. ",
             agent=self.tools_agent(),
             expected_output=(
+                " Response using the minimum characters needed\n"
                 " Answer with a markdown list of tools and their alternatives, e.g.:\n\n"
                 "- **Tool 1**: Electric drill\n"
                 "  - Alternative: Manual drill\n"
@@ -553,13 +592,25 @@ class CrewAIChatbot:
     )
  
     @retry_with_backoff
-    def cost_estimation_task(self, materials_list):
+    def cost_estimation_task(self, project_description):
+
+        materials_ready = self.task_events['materials'].wait(timeout=300)
+        tools_ready = self.task_events['tools'].wait(timeout=300)
+
+        if not (materials_ready and tools_ready):
+            materials = 'Unknown materials'
+            tools = 'Unknown tools'
+            print('\nTimeOut Unknown aterials and/or tools for cost calculation.\n')            
+        else:
+            materials = self.context['materials']
+            tools = self.context['tools']
+            print('MATERIALS::::::::::::::::::::::::', materials)
+            print('TOOLS::::::::::::::::::::::::::::', tools)
+
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        schedule = self.context['schedule']
-        materials = self.context['materials']
-        tools = self.context['tools']
-        location = self.context.get('user_location', 'Europe')
-        currency = self.context.get('currency', '€')
+#        schedule = self.context['schedule']
+#        location = self.context.get('user_location', 'Europe')
+#        currency = self.context.get('currency', '€')
 
         # Define reference markets based on location context or general applicability
         markets = (
@@ -569,50 +620,51 @@ class CrewAIChatbot:
 
         return Task(
             description=(
-                f"Consider the conversation history: {recent_history}.\n"
-                f"Provide a cost estimation for the following materials: {materials_list}.\n"
-                f"Consider schedule provided in context: {schedule}.\n"
+                f"Provide a quick cost estimation for the required petition: {project_description}.\n"
+                f"Consider the conversation history context: {recent_history}.\n"
+#                f"Consider schedule provided in context: {schedule}.\n"
                 f"Consider materials provided in context: {materials}.\n"
                 f"Consider tools provided in context: {tools}.\n"
-                f"Use the user's location ({location}) to determine the appropriate markets ({markets}) and currency ({currency}).\n"
-                f"If the user's location is unknown, default to providing costs in euros (€).\n"
-                f"Focus on direct price information (e.g., price per unit) and avoid providing unrelated context or market trends.\n"
-                f"Respond in markdown table format for clarity, showing costs in the relevant currency.\n"
+#                f"Use the user's location ({location}) to determine the appropriate markets ({markets}) and currency ({currency}).\n"
+                f"Consider the required location.\n"
+#                f"Focus on direct price information (e.g., price per unit) and avoid providing unrelated context or market trends.\n"
+#                f"Respond in markdown table format for clarity, showing costs in the relevant currency.\n"
                 f"Respond using the number format (US: 1,234.56 or EU: 1.234,56) and measurement system (metric/imperial) specified by the user. "
                  "If none specified, use their location's standard. Default to European format (EU numbers, metric) if no location given."
             ),
             agent=self.cost_agent(),
             expected_output=(
+                "Response using the minimum characters needed\n"
                 "Respond with a markdown table of costs, referencing the relevant markets and using the appropriate currency. For example:\n\n"
-                "| Material        | Cost (in {currency})  | Alternatives                       |\n"
-                "|----------------|----------------------|------------------------------------|\n"
-                "| Paint          | 15 €/liter          | Eco-paint (20 €/liter)             |\n"
+                "| Material        | Cost (in €)          | Alternatives                       |\n"
+                "|-----------------|----------------------|------------------------------------|\n"
+                "| Paint           | 15 €/liter           | Eco-paint (20 €/liter)             |\n"
             ),
 #            async_execution=True
         )
 
-    @retry_with_backoff
-    def guide_task(self, repair_or_renovation_process):
-        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        materials = self.context['materials']
-        tools = self.context['tools']
-        return Task(
-            description=f"Consider the conversation history: {recent_history}."
-                        f"Provide detailed step-by-step instructions for the following repair or renovation process: {repair_or_renovation_process}. "
-                        f"Consider materials provided in context: {materials}. "
-                        f"Consider tools provided in context: {tools}. "
-                        f"Ensure that the steps are easy to follow and comprehensive, covering all necessary tools, materials, and safety precautions. ",
-            agent=self.guide_agent(),
-            expected_output=(
-                "Answer with a list of detailed steps for the repair or renovation process. For example:\n\n"
-                "1. Identify the scope of the repair or renovation.\n"
-                "2. Gather all necessary tools and materials.\n"
-                "3. Prepare the work area to ensure safety and efficiency.\n"
-                "4. Step-by-step breakdown of the actual work (e.g., removing old materials, installing new ones).\n"
-                "5. Final touches and clean-up instructions.\n"
-            ),
-            async_execution=True
-        )
+#    @retry_with_backoff
+#    def guide_task(self, repair_or_renovation_process):
+#        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
+#        materials = self.context['materials']
+#        tools = self.context['tools']
+#        return Task(
+#            description=f"Consider the conversation history: {recent_history}."
+#                        f"Provide detailed step-by-step instructions for the following repair or renovation process: {repair_or_renovation_process}. "
+#                        f"Consider materials provided in context: {materials}. "
+#                        f"Consider tools provided in context: {tools}. "
+#                        f"Ensure that the steps are easy to follow and comprehensive, covering all necessary tools, materials, and safety precautions. ",
+#            agent=self.guide_agent(),
+#            expected_output=(
+#                "Answer with a list of detailed steps for the repair or renovation process. For example:\n\n"
+#                "1. Identify the scope of the repair or renovation.\n"
+#                "2. Gather all necessary tools and materials.\n"
+#                "3. Prepare the work area to ensure safety and efficiency.\n"
+##                "4. Step-by-step breakdown of the actual work (e.g., removing old materials, installing new ones).\n"
+#                "5. Final touches and clean-up instructions.\n"
+#            ),
+#            async_execution=True
+#        )
     
     @retry_with_backoff
     def contractor_search_task(self, project_description):
@@ -632,6 +684,7 @@ class CrewAIChatbot:
             ),
             agent=self.contractor_search_agent(),
             expected_output=(
+                "Response using the minimum characters needed.\n"
                 "Answer with a list of up to two contractors with their contact information or website links, including details on how to request"
                 " a budget estimation. For example:\n\n"
                 "- **Contractor 1**: ABC Renovations\n"
@@ -650,7 +703,7 @@ class CrewAIChatbot:
         schedule = self.context['schedule']
         materials = self.context['materials']
         tools = self.context['tools']
-        step_by_step_guide = self.context['step_by_step_guide']
+#        step_by_step_guide = self.context['step_by_step_guide']
         return Task(
             description=(
                 f"Consider the conversation history: {recent_history}."
@@ -661,10 +714,11 @@ class CrewAIChatbot:
                 f"Consider materials in context: {materials}. " 
                 f"Consider schedule in context: {schedule}. " 
                 f"Consider tools in context: {tools}. "
-                f"Consider step by step guide in context: {step_by_step_guide}. " 
+#                f"Consider step by step guide in context: {step_by_step_guide}. " 
             ),
             agent=self.safety_agent(),
             expected_output=(
+                "Response using the minimum characters needed. \n"
                 "Respond with a concise step-by-step safety guide. Include the following considerations:\n"
                 "- Key steps to perform the task safely."
                 "- Specific risks associated with each step."
@@ -679,7 +733,6 @@ class CrewAIChatbot:
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         return Task(
             description=(
-                f"SECOND PHASE - Schedule and Guide Creation:\n"
                 f"Using the conversation history: {recent_history}, create both a schedule and step-by-step guide for the project: {project_description}. "
                 f"The response should include TWO clearly separated sections:\n"
                 f"1. SCHEDULE: A table with Task, Duration, and Recommended number of people\n"
@@ -689,7 +742,7 @@ class CrewAIChatbot:
             ),
             agent=self.scheduler_agent(),
             expected_output=(
-                "Return both schedule and guide in markdown format:\n\n"
+                "Return only schedule and guide in markdown format:\n\n"
                 "## Schedule\n"
                 "| Task                | Duration | Recommended People |\n"
                 "|---------------------|----------|--------------------|\n"
@@ -711,18 +764,19 @@ class CrewAIChatbot:
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         materials = self.context['materials']
         tools = self.context['tools']
-        step_by_step_guide = self.context['step_by_step_guide']
+#        step_by_step_guide = self.context['step_by_step_guide']
         contractors = self.context['contractors']
         cost_estimation = self.context['cost_estimation']
         safety_guidance = self.context['safety_guidance']
-        schedule = self.context.get('schedule')  
+        schedule = self.context['schedule']
+#        schedule = self.context.get('schedule')  
 
         return Task(
             description=(
+                f"Compose a final, well-structured response with the collected project details based on rquirements."
                 f"Consider the conversation history: {recent_history}."
-                f"Compose a final, well-structured response with the collected project details based on the user's question."
-                f"Include project guidance, required materials, tools, cost estimation, step-by-step guide, recommended contractors, "
-                f"safety guidance notes, and the project schedule. "
+ #               f"Include project guidance, required materials, tools, cost estimation, step-by-step guide, recommended contractors, "
+#                f"safety guidance notes, and the project schedule. "
                 f"Ensure that the response is visually clear, well-organized, and presented in the user's language. "
                 f"If translation is necessary, adapt the response to the language detected in the user's question."
                 f"Consider the question of the user: {task_description}."
@@ -739,6 +793,7 @@ class CrewAIChatbot:
             agent=self.presentation_agent(),
             expected_output=(
                 "Use the language of the user.\n"
+                "Response using the minimum characters needed.\n"
                 "Provide a structured and elegant response in markdown format, organizing all information clearly under distinct headings.\n"
                 "Must be displayed in a table if this is convenient.\n"
                 "Response must include all the following information:\n"
@@ -761,6 +816,11 @@ class CrewAIChatbot:
 
             self.context['conversation_history'].append({"role": "user", "content": question})
             execution_times = {} # Test code - Kevin - Ernest
+
+            # Reset all events at the start
+            for event in self.task_events.values():
+                event.clear()
+
 
             # Step 0: Check relevance
             start_time = time.time() # Test code - Kevin - Ernest
@@ -793,29 +853,90 @@ class CrewAIChatbot:
                 print(f"Classification took: {execution_times['classification']} seconds")  # Test code - Kevin - Ernest
 
 
-            # Sequentially process tasks
-            sequential_tasks = [
-                (self.scheduling_task, 'schedule'),
-                (self.materials_task, 'materials'),
-                (self.tools_task, 'tools'),
-#                (self.guide_task, 'step_by_step_guide'),
-                (self.contractor_search_task, 'contractors'),
-                (self.safety_task, 'safety_guidance'),
-                (self.cost_estimation_task, 'cost_estimation'),
-            ]
+            if not self.context['schedule']:
+                start_time = time.time()  # Test code - Kevin - Ernest
+                scheduling_task = self.scheduling_task(question)
+                scheduling_crew = Crew(
+                    agents=[scheduling_task.agent],
+                    tasks=[scheduling_task],
+                    verbose=True
+                )
+                schedule_result = scheduling_crew.kickoff()
 
-            for task_method, context_key in sequential_tasks:
-                if not self.context.get(context_key):
-                    start_time = time.time() # Test code - Kevin - Ernest
-                    task = task_method(question)
-                    crew = Crew(agents=[task.agent], tasks=[task], verbose=True)
-                    result = crew.kickoff()
+                # Take results
+                self.context['schedule'] = schedule_result
+#                self.task_events['schedule'].set()
 
-                    if result.lower().startswith('question:'):
-                        return result.split(':', 1)[1].strip()
-                    self.context[context_key] = result
-                    execution_times[context_key] = round(time.time() - start_time, 2) # Test code - Kevin - Ernest
-                    print(f"{context_key.replace('_', ' ').title()} took: {execution_times[context_key]} seconds") # Test code - Kevin - Ernest
+
+            # Group tasks by dependency level
+            task_groups = {
+#                'level1': [(self.scheduling_task, 'schedule')],  # No dependencies
+                'level2': [  # Depends on schedule
+                    (self.materials_task, 'materials'),
+                    (self.tools_task, 'tools'),
+                    (self.contractor_search_task, 'contractors'),
+                    (self.safety_task, 'safety_guidance')
+                ],
+                'level3': [  # Depends on materials and tools
+                    (self.cost_estimation_task, 'cost_estimation')
+                ]
+            }
+
+#            # Sequentially process tasks
+#            sequential_tasks = [
+#                (self.scheduling_task, 'schedule'),
+#                (self.materials_task, 'materials'),
+#                (self.tools_task, 'tools'),
+##                (self.guide_task, 'step_by_step_guide'),
+#                (self.contractor_search_task, 'contractors'),
+#                (self.safety_task, 'safety_guidance'),
+#                (self.cost_estimation_task, 'cost_estimation'),
+#            ]
+
+
+#            for task_method, context_key in sequential_tasks:
+#                if not self.context.get(context_key):
+
+#                    start_time = time.time() # Test code - Kevin - Ernest
+#                    task = task_method(question)
+#                    crew = Crew(agents=[task.agent], tasks=[task], verbose=True)
+#                    result = crew.kickoff()
+#
+#                    if result.lower().startswith('question:'):
+#                        return result.split(':', 1)[1].strip()
+#                    
+#                    self.context[context_key] = result
+#                    self.task_events[context_key].set()  # Signal task completion
+#                    execution_times[context_key] = round(time.time() - start_time, 2) # Test code - Kevin - Ernest
+#                    print(f"{context_key.replace('_', ' ').title()} took: {execution_times[context_key]} seconds") # Test code - Kevin - Ernest
+
+            # In get_response method:
+            for level, tasks in task_groups.items():
+                # Create threads for all tasks in this level
+                threads = []
+                for task_method, context_key in tasks:
+                    if not self.context.get(context_key):
+                        # Check if dependencies are met
+                        dependencies = self.task_dependencies.get(context_key, set())
+                        if dependencies:
+                            for dep in dependencies:
+                                if not self.task_events[dep].is_set():
+                                    print(f"Waiting for {dep} to complete before starting {context_key}")
+                                    self.task_events[dep].wait(timeout=300)
+                        
+                        # Start task in new thread
+                        thread = Thread(
+                            target=self.execute_task,
+                            args=(task_method, context_key, question, execution_times)
+                        )
+                        threads.append(thread)
+                        thread.start()
+                
+                # Wait for all tasks in this level to complete
+                for thread in threads:
+                    thread.join()
+
+
 
 
             # Step 8: Presentation
