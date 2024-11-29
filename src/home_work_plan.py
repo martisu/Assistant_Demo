@@ -8,7 +8,10 @@ from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 
 
-from crewai_tools import ScrapeWebsiteTool
+from playwright.sync_api import sync_playwright
+from langchain.schema import Document
+from langchain.text_splitter import CharacterTextSplitter
+
 import yaml
 import os
 import time
@@ -29,7 +32,7 @@ def retry_with_backoff(func, max_retries=4):
 
 class CrewAIChatbot:
 
-    HISTORY_LIMIT = 60  # Length of the history to consider
+    HISTORY_LIMIT = 20  # Length of the history to consider
 
     def __init__(self, credentials_path):
         self.credentials = self.load_credentials(credentials_path)
@@ -118,48 +121,54 @@ class CrewAIChatbot:
                     continue  # Skip problematic PDFs
         
         return pdf_tools
+         
+    def scrape_pages(self, section_type):
     
-    def page_search(self, type_filter):
-        """
-        Search within the 'Stores' or 'Contractors' section of the YAML file.
-        Performs direct DuckDuckGo search if no data is found.
-
-        Args:
-            type_filter (str): The type of entries to filter ('stores' or 'contractors').
-
-        Returns:
-            dict: A dictionary of URLs and their respective search results or an error message.
-        """
         try:
-            # Step 1: Validate type_filter
-            if type_filter not in ["stores", "contractors"]:
-                return {"error": "Invalid type_filter. Choose 'stores' or 'contractors'."}
+            # Load the YAML data
+            file_path = "data/sites/cost&contractors.yaml"
+            with open(file_path, "r") as file:
+                yaml_data = yaml.safe_load(file)
+            
+            pages = yaml_data.get(section_type, [])
+            results = []
 
-            # Step 2: Load YAML Data
-            with open("data/sites/cost&contractors.yaml", "r") as file:
-                data = yaml.safe_load(file)
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                for page_data in pages:
+                    page_name = page_data["name"]
+                    page_link = page_data["link"]
+                    page_description = page_data.get("description", "No description available.")
 
-            # Step 3: Extract the relevant section
-            entries = data.get(type_filter.capitalize(), [])
-            if not entries:
-                return {"error": f"No entries found for {type_filter} in the YAML file."}
+                    page = browser.new_page()
+                    page.goto(page_link)
+                    page.wait_for_timeout(2000)
 
-            # Step 4: Perform searches for each entry
-            search_results = {}
-            for entry in entries:
-                name = entry.get("name")
-                link = entry.get("link")
-                if link:
-                    # Perform the search
-                    query = f"site:{link}"  # Restrict search to the specific store or contractor link
-                    result = self.search_tool.run(query)
-                    search_results[name] = result
+                    if section_type == "Stores":
+                        product_titles = page.locator(".product-title").all_inner_texts()
+                        product_prices = page.locator(".product-price").all_inner_texts()
+                        details = [
+                            {"title": title, "price": price}
+                            for title, price in zip(product_titles, product_prices)
+                        ]
+                    elif section_type == "Contractors":
+                        contact_info = page.locator(".contact-info").all_inner_texts()  
+                        details = {
+                            "contact": contact_info[0] if contact_info else "Contact not found",
+                            "website": page_link,
+                        }
 
-            # Return the search results
-            return search_results
+                    results.append({
+                        "name": page_name,
+                        "description": page_description,
+                        "details": details,
+                    })
 
+                browser.close()
+            return results
         except Exception as e:
-            return {"error": f"Error occurred: {str(e)}"}
+            return {"error": f"Scraping failed: {e}"}
+
 
     def load_credentials(self, path):
         with open(path, "r") as stream:
@@ -180,19 +189,6 @@ class CrewAIChatbot:
             'conversation_history': conversation_history,
         }
 
-    def load_scrape_tools(self, source_type):
-        """Load scraping tools based on the specified source type (either 'websites' or 'tools')."""
-        file_path = f"data/sites/{source_type}.yaml"
-        with open(file_path, "r") as file:
-            resources = yaml.safe_load(file)
-            scrape_tools = []
-            for resource in resources['resources']:
-                scrape_tools.append(ScrapeWebsiteTool(
-                    website_url=resource['url'],
-                    website_name=resource['name'],
-                    website_description=resource['description']
-                ))
-            return scrape_tools
     ##------------------------------------AGENTS------------------------------------
     def relevance_agent(self):
         return Agent(
@@ -324,7 +320,11 @@ class CrewAIChatbot:
         return Agent(
             role='Cost Determinator',
             goal='Provide cost estimations for materials, considering the user’s location and preferred currency.',
-            tools=[self.search_tool],
+            tools=[Tool(
+                    name="Store Search",
+                    func=lambda query: self.scrape_pages("Stores", query),
+                    description="Search all predefined stores for material prices and availability."
+                )],
             verbose=True,
             backstory=(
             "You are a cost expert in construction. "
@@ -394,9 +394,7 @@ class CrewAIChatbot:
             backstory=(
                 "You are a comprehensive project analysis expert who first evaluates all needed information "
                 "for the entire project lifecycle including materials, tools, costs, safety, and execution. "
-                "Your primary responsibility is to identify ANY missing information that would be needed by ANY phase "
-                "of the project (materials selection, tool requirements, cost estimation, contractor selection, etc). "
-                "Only after ALL information is available, you create a detailed schedule and step-by-step guide. "
+                "Create a detailed schedule and step-by-step guide. "
                 "You think systematically about ALL aspects that other specialists would need to know: "
                 "dimensions, materials preferences, budget constraints, timeline requirements, location details, "
                 "specific requirements for contractors, safety considerations, etc."
@@ -503,25 +501,23 @@ class CrewAIChatbot:
     @retry_with_backoff
     def materials_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        # schedule = self.context['schedule']
         return Task(
-            description=f"Consider the conversation history: {recent_history}."
-                        # f"Consider schedule provided in context: {schedule}. "
-                        f"List the materials required for the following project: {project_description}. "
-                        f"The response should only contain the MATERIALS and must NOT include the TOOLS. "
-                        f"Include alternatives where applicable. ",
+            description=(
+                f"Consider the conversation history: {recent_history}. "
+                f"List the primary materials required for the following project: {project_description}. "
+                f"The response should only contain the main MATERIALS and must NOT include any alternatives or TOOLS. "
+                f"Provide the estimated required quantities for each material."
+            ),
             agent=self.materials_agent(),
             expected_output=(
-                " Answer with a markdown list of materials, including the estimated required quantities and alternatives, e.g.:\n\n"
-                "- **Material 1**: High-quality cement\n"
+                "Answer with a markdown list of materials, including the estimated required quantities, e.g.:"
+                "\n- **Material 1**: High-quality cement\n"
                 "  - Quantity: 10 kg\n"
-                "  - Alternative: Eco-friendly cement (8 kg)\n"
                 "- **Material 2**: Paint (white)\n"
                 "  - Quantity: 2 liters\n"
-                "  - Alternative: Matte finish paint (2 liters)\n"
             ),
             async_execution=True
-    )
+        )
 
     @retry_with_backoff
     def tools_task(self, project_description):
@@ -546,33 +542,29 @@ class CrewAIChatbot:
     @retry_with_backoff
     def cost_estimation_task(self, materials_list):
         materials = self.context['materials']
-        while materials is None :
-            time.sleep(1)  # Wait for 1 second before checking again
-
+        while materials is None:
+            time.sleep(5)  # Wait for 5 second before checking again
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        markets = "Leroy Merlin, Obramat"
-
         return Task(
             description=(
 
                 f"Consider materials provided in context: {materials}.\n"
-                f"Determine the appropriate markets ({markets}).\n"
-                f"If the user's location is unknown, default to providing costs in euros (€).\n"
-                f"Focus on direct price information (e.g., price per unit) and avoid providing unrelated context or market trends.\n"
+                f"If the user's location is unknown, default is Spain to providing costs in euros (€).\n"
+                f"Focus strictly on direct price information for each material (e.g., price per unit) and avoid providing any unrelated context, market trends, or alternative materials.\n"
                 f"Respond in markdown table format for clarity, showing costs in the relevant currency.\n"
                 f"Respond using the number format (EU 1.234,56) and measurement system (metric). "
                 "If none specified, use their location's standard. Default to Spain format (EU numbers, metric) if no location given."
             ),
             agent=self.cost_agent(),
-            context = [self.materials_task],
             expected_output=(
                 "Respond QUICKLY AND EFFICIENTLY with a markdown table of costs, referencing the relevant markets and using the appropriate currency. For example:\n\n"
-                "| Material        | Cost (EUR)  | Alternatives                       |\n"
-                "|----------------|----------------------|------------------------------------|\n"
-                "| Paint          | 15 €/liter            | Eco-paint (20 €/liter)             |\n"
-            ),
-            async_execution=True
+                "| Material        | Cost (EUR)  |\n"
+                "|----------------|-------------|\n"
+                "| Paint          | 15 €/liter  |\n"
+            )
         )
+
+
 
     @retry_with_backoff
     def contractor_search_task(self, project_description):
@@ -639,22 +631,21 @@ class CrewAIChatbot:
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         return Task(
             description=(
-                f"SECOND PHASE - Schedule and Guide Creation:\n"
-                f"Using the conversation history: {recent_history}, create both a schedule and step-by-step guide for the project: {project_description}. "
-                f"The response should include TWO clearly separated sections:\n"
-                f"1. SCHEDULE: A table with Task, Duration, and Recommended number of people\n"
-                f"2. STEP-BY-STEP GUIDE: Detailed instructions for each task\n"
-                f"If a deadline is specified ({deadline}), prioritize tasks to meet it.\n"
-                f"Ensure all safety considerations and prerequisites are included in both sections."
+                f"Create a schedule and guide for: {project_description}.\n"
+                f"Include: \n"
+                f"1. SCHEDULE: Task, Duration, Recommended people\n"
+                f"2. STEP-BY-STEP GUIDE: Instructions for each task\n"
+                f"If a deadline ({deadline}) is provided, prioritize tasks to meet it.\n"
+                f"Include safety considerations and prerequisites."
             ),
             agent=self.scheduler_agent(),
             expected_output=(
-                "Return both schedule and guide in markdown format:\n\n"
+                "Return"
                 "## Schedule\n"
                 "| Task                | Duration | Recommended People |\n"
                 "|---------------------|----------|--------------------|\n"
                 "| Gather Materials    | 2 days   | 3                  |\n"
-                "| Prep Work Area      | 1 day    | 2                  |\n\n"
+                "| Prep Work Area      | 1 day    | 2                  |\n"
                 "## Step-by-Step Guide\n"
                 "1. Preparation Phase:\n"
                 "   - Gather all materials\n"
