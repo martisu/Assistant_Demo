@@ -12,6 +12,8 @@ from crewai_tools import ScrapeWebsiteTool
 import yaml
 import os
 import time
+import asyncio
+
 
 def retry_with_backoff(func, max_retries=4):
     def wrapper(*args, **kwargs):
@@ -319,19 +321,18 @@ class CrewAIChatbot:
         )
     
     def cost_agent(self):
-        stores_data = self.page_search("stores")
         return Agent(
             role='Cost Determinator',
             goal='Provide cost estimations for materials, considering the user’s location and preferred currency.',
             tools=[self.search_tool],
             verbose=True,
             backstory=(
-                "You are a cost expert in construction. "
-                "Your role is to provide cost estimations for materials or tools, converting them into the currency based on the user's location. "
-                "Default to euros (€) if the user’s location is not specified. "
-                "Perform a targeted search for pricing data and ensure clarity in the response. "
-                "Provide approximate unit prices in the user’s currency or a specified currency. "
-                "Avoid including unrelated context or general market trends."
+            "You are a cost expert in construction. "
+            "Your role is to provide cost estimations for materials or tools, converting them into the currency based on the user's location. "
+            "Default to euros (€) if the user’s location is not specified. "
+            "Perform a targeted search for pricing data and ensure clarity in the response. "
+            "Provide approximate unit prices in the user’s currency or a specified currency. "
+            "Avoid including unrelated context or general market trends."
             ),
             llm=self.llm
         )
@@ -464,7 +465,8 @@ class CrewAIChatbot:
                         f"Classify the following home improvement project: {question}. "
                         f"Determine if it's a repair, renovation, or if it's unclear (undefined).",
             agent=self.planificator_agent(),
-            expected_output="Project classified as 'repair', 'renovation', or 'undefined'."
+            expected_output="Project classified as 'repair', 'renovation', or 'undefined'.",
+            async_execution=True
         )
 
     def questions_task(self, question):
@@ -501,10 +503,10 @@ class CrewAIChatbot:
     @retry_with_backoff
     def materials_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        schedule = self.context['schedule']
+        # schedule = self.context['schedule']
         return Task(
             description=f"Consider the conversation history: {recent_history}."
-                        f"Consider schedule provided in context: {schedule}. "
+                        # f"Consider schedule provided in context: {schedule}. "
                         f"List the materials required for the following project: {project_description}. "
                         f"The response should only contain the MATERIALS and must NOT include the TOOLS. "
                         f"Include alternatives where applicable. ",
@@ -524,11 +526,11 @@ class CrewAIChatbot:
     @retry_with_backoff
     def tools_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        schedule = self.context['schedule']
+        # schedule = self.context['schedule']
         return Task(
             description=f"Consider the conversation history: {recent_history}."
                         f"List the tools required for the following project: {project_description}. "
-                        f"Consider schedule provided in context: {schedule}. "
+                        # f"Consider schedule provided in context: {schedule}. "
                         f"The response should only contain the TOOLS and their quantities, without including MATERIALS. ",
             agent=self.tools_agent(),
             expected_output=(
@@ -543,76 +545,46 @@ class CrewAIChatbot:
  
     @retry_with_backoff
     def cost_estimation_task(self, materials_list):
-        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:] 
-        # schedule = self.context['schedule']
         materials = self.context['materials']
-        # tools = self.context['tools']
-        # location = self.context.get('user_location', 'Spain')
-        # currency = self.context.get('currency', '€')
+        while materials is None :
+            time.sleep(1)  # Wait for 1 second before checking again
 
-        # Define reference markets based on location context or general applicability
-        markets = (
-            "Leroy Merlin, Obramat"
-        )
+        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
+        markets = "Leroy Merlin, Obramat"
 
         return Task(
             description=(
-                f"Consider the conversation history: {recent_history}.\n"
-                f"Provide a cost estimation for the following materials: {materials_list}.\n"
-                # f"Consider schedule provided in context: {schedule}.\n"
+
                 f"Consider materials provided in context: {materials}.\n"
-                # f"Consider tools provided in context: {tools}.\n"
                 f"Determine the appropriate markets ({markets}).\n"
                 f"If the user's location is unknown, default to providing costs in euros (€).\n"
                 f"Focus on direct price information (e.g., price per unit) and avoid providing unrelated context or market trends.\n"
                 f"Respond in markdown table format for clarity, showing costs in the relevant currency.\n"
                 f"Respond using the number format (EU 1.234,56) and measurement system (metric). "
-                 "If none specified, use their location's standard. Default to Spain format (EU numbers, metric) if no location given."
+                "If none specified, use their location's standard. Default to Spain format (EU numbers, metric) if no location given."
             ),
             agent=self.cost_agent(),
+            context = [self.materials_task],
             expected_output=(
-                "Respond with a markdown table of costs, referencing the relevant markets and using the appropriate currency. For example:\n\n"
-                "| Material        | Cost (in {currency})  | Alternatives                       |\n"
+                "Respond QUICKLY AND EFFICIENTLY with a markdown table of costs, referencing the relevant markets and using the appropriate currency. For example:\n\n"
+                "| Material        | Cost (EUR)  | Alternatives                       |\n"
                 "|----------------|----------------------|------------------------------------|\n"
-                "| Paint          | 15 €/liter          | Eco-paint (20 €/liter)             |\n"
-            ),
-#            async_execution=True
-        )
-
-    @retry_with_backoff
-    def guide_task(self, repair_or_renovation_process):
-        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        materials = self.context['materials']
-        tools = self.context['tools']
-        return Task(
-            description=f"Consider the conversation history: {recent_history}."
-                        f"Provide detailed step-by-step instructions for the following repair or renovation process: {repair_or_renovation_process}. "
-                        f"Consider materials provided in context: {materials}. "
-                        f"Consider tools provided in context: {tools}. "
-                        f"Ensure that the steps are easy to follow and comprehensive, covering all necessary tools, materials, and safety precautions. ",
-            agent=self.guide_agent(),
-            expected_output=(
-                "Answer with a list of detailed steps for the repair or renovation process. For example:\n\n"
-                "1. Identify the scope of the repair or renovation.\n"
-                "2. Gather all necessary tools and materials.\n"
-                "3. Prepare the work area to ensure safety and efficiency.\n"
-                "4. Step-by-step breakdown of the actual work (e.g., removing old materials, installing new ones).\n"
-                "5. Final touches and clean-up instructions.\n"
+                "| Paint          | 15 €/liter            | Eco-paint (20 €/liter)             |\n"
             ),
             async_execution=True
         )
-    
+
     @retry_with_backoff
     def contractor_search_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         # materials = self.context['materials']
         # tools = self.context['tools']
-        schedule = self.context['schedule']
+        # schedule = self.context['schedule']
         return Task(
             description=(
                 f"Consider the conversation history: {recent_history}."
                 f"Search for a maximum of two contractors who specialize in the following project in the specified location or nearby. "
-                f"Consider materials provided in context: {schedule}. "
+                # f"Consider materials provided in context: {schedule}. "
                 # f"Consider materials provided in context: {materials}. "
                 # f"Consider tools provided in context: {tools}. "
                 f"Provide contact details or links where the user can request a budget estimation. "
@@ -634,22 +606,22 @@ class CrewAIChatbot:
 
     @retry_with_backoff
     def safety_task(self, task_description):
-        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        schedule = self.context['schedule']
+        # recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
+        # schedule = self.context['schedule']
         # materials = self.context['materials']
         # tools = self.context['tools']
-        step_by_step_guide = self.context['step_by_step_guide']
+        # step_by_step_guide = self.context['step_by_step_guide']
         return Task(
             description=(
-                f"Consider the conversation history: {recent_history}."
-                f"Provide a careful, safety-focused guide for the following task: {task_description}. "
+                # f"Consider the conversation history: {recent_history}."
+                # f"Provide a careful, safety-focused guide for the following task: {task_description}. "
                 f"The instructions should prioritize accident prevention by outlining each step in detail, highlighting any safety risks,"
                 f"and suggesting appropriate protective measures or precautions. Emphasize where extra caution is needed."
                 f"Consider the question of the user: {task_description}."
                 # f"Consider materials in context: {materials}. " 
-                f"Consider schedule in context: {schedule}. " 
+                # f"Consider schedule in context: {schedule}. " 
                 # f"Consider tools in context: {tools}. "
-                f"Consider step by step guide in context: {step_by_step_guide}. " 
+                # f"Consider step by step guide in context: {step_by_step_guide}. " 
             ),
             agent=self.safety_agent(),
             expected_output=(
@@ -699,7 +671,7 @@ class CrewAIChatbot:
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         materials = self.context['materials']
         tools = self.context['tools']
-        step_by_step_guide = self.context['step_by_step_guide']
+        # step_by_step_guide = self.context['step_by_step_guide']
         contractors = self.context['contractors']
         cost_estimation = self.context['cost_estimation']
         safety_guidance = self.context['safety_guidance']
@@ -713,7 +685,7 @@ class CrewAIChatbot:
                 f"safety guidance notes, and the project schedule. "
                 f"Ensure that the response is visually clear, well-organized, and presented in the user's language. "
                 f"If translation is necessary, adapt the response to the language detected in the user's question."
-                f"Consider the question of the user: {task_description}."
+                # f"Consider the question of the user: {task_description}."
                 f"Consider materials in context: {materials}. (Also missing information if there is indicated)." 
                 f"Consider tools in context: {tools}. (Also missing information if there is indicated)."
 #                f"Consider step by step guide in context: {step_by_step_guide}. (Also missing information if there is indicated)."
@@ -721,7 +693,7 @@ class CrewAIChatbot:
                 f"Consider cost estimation in context: {cost_estimation}. (Also missing information if there is indicated)."
                 f"Consider safety guidance notes in context: {safety_guidance}. (Also missing information if there is indicated)."
                 f"Consider the schedule in context: {schedule}. (Also missing information if there is indicated)."
-                f"Respond using the number format (US: 1,234.56 or EU: 1.234,56) and measurement system (metric/imperial) specified by the user. "
+                f"Respond using the number format (EU: 1.234,56) and measurement system (metric/imperial) specified by the user. "
                  "If none specified, use their location's standard. Default to European format (EU numbers, metric) if no location given."
             ),
             agent=self.presentation_agent(),
