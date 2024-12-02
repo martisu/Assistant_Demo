@@ -23,13 +23,6 @@ st.image(logo_image, caption='')
 
 st.title("Asistente de Mejoras del Hogar")
 
-# Image input for users
-uploaded_image = st.file_uploader("Sube una imagen del área a mejorar", type=["jpg", "jpeg", "png"])
-if uploaded_image:
-    # Display uploaded image
-    image = Image.open(uploaded_image)
-    st.image(image, caption="Imagen cargada por el usuario")
-
 # Inicializar historial de chat
 if "messages" not in st.session_state:
     st.session_state.messages = []
