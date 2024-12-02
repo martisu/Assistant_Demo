@@ -7,11 +7,9 @@ from langchain_openai.chat_models.azure import AzureChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 
-
 from playwright.sync_api import sync_playwright
 from langchain.text_splitter import CharacterTextSplitter
 from threading import Thread
-
 
 import yaml
 import os
@@ -228,57 +226,6 @@ class CrewAIChatbot:
             llm=self.llm
         )
 
-    def planificator_agent(self):
-        return Agent(
-            role='Project Classifier',
-            goal='Classify whether a home improvement project is a repair, a renovation, or undefined.',
-            tools=[],
-            verbose=True,
-            backstory=(
-                "You are an expert in classifying home improvement projects. "
-                "Your task is to determine if a project is a **repair** (fixing or restoring something damaged), "
-                "a **renovation** (improving or modernizing an existing feature), or **undefined** if it's not clear. "
-                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise. "
-                "If you can't determine the type, classify it as 'undefined'. "
-                "Use a maximum of one line per response to keep it concise. "
-                "Always respond in the language of the user."
-            ),
-            llm=self.llm
-        )
-    
-    def repair_agent(self):
-        return Agent(
-            role='Repair Expert',
-            goal='Provide detailed guidance on home repair projects.',
-            tools=[self.search_tool],
-            verbose=True,
-            backstory=(
-                "You are an experienced expert in home repairs. "
-                "Your role is to provide clear and practical guidance on repair projects, "
-                "focusing on fixes and maintenance tasks that do not require major structural changes. "
-                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
-                "Use a maximum of four sentences to keep the response concise. "
-            ),
-            llm=self.llm
-        )
-
-    def renovation_agent(self):
-        return Agent(
-            role='Renovation Expert',
-            goal='Provide detailed guidance on home renovation projects.',
-            tools=[self.search_tool], #+ self.pdf_tools,
-            verbose=True,
-            backstory=(
-                "You are an experienced expert in home renovations. "
-                "Your role is to provide in-depth advice on renovation projects, "
-                "particularly those involving major structural changes or additions to the home. "
-                "Always detect the language of the user's input and respond in that language unless explicitly instructed otherwise."
-                "Use a maximum of four sentences to keep the response concise. "
-            ),
-            llm=self.llm
-        )
-
-    
     def materials_agent(self):
         return Agent(
             role='Materials Expert',
@@ -296,7 +243,6 @@ class CrewAIChatbot:
             llm=self.llm
         )
 
-    
     def tools_agent(self):
         return Agent(
             role='Tools Expert',
@@ -383,8 +329,7 @@ class CrewAIChatbot:
             ),
             llm=self.llm
         )
-
-
+    
     def presentation_agent(self):
         return Agent(
             role="Presentation Expert",
@@ -435,18 +380,6 @@ class CrewAIChatbot:
                 "2. 'QUESTION: '  ' followed by brief missing info summary + ONE question\n"
                 "3. 'RELATED' \n"
             )
-        )
-
-    @retry_with_backoff
-    def planificator_task(self, question):
-        recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        return Task(
-            description=f"Consider the conversation history: {recent_history}."
-                        f"Classify the following home improvement project: {question}. "
-                        f"Determine if it's a repair, renovation, or if it's unclear (undefined).",
-            agent=self.planificator_agent(),
-            expected_output="Project classified as 'repair', 'renovation', or 'undefined'.",
-            async_execution=True
         )
 
 
@@ -640,9 +573,7 @@ class CrewAIChatbot:
 
             self.context['conversation_history'].append({"role": "user", "content": question})
             execution_times = {}
-
-            # Step 0: Check relevance
-            start_time = time.time() # Test code - Kevin - Ernest
+            start_time = time.time() 
             relevance_task = self.check_relevance_task(question)
             relevance_crew = Crew(
                 agents=[relevance_task.agent],
@@ -650,59 +581,24 @@ class CrewAIChatbot:
                 verbose=True
             )
             relevance_result = relevance_crew.kickoff()
-            execution_times['relevance'] = round(time.time() - start_time, 2) # Test code - Kevin - Ernest
-            print(f"Relevance check took: {execution_times['relevance']} seconds") # Test code - Kevin - Ernest
+            execution_times['relevance'] = round(time.time() - start_time, 2) 
+            print(f"Relevance check took: {execution_times['relevance']} seconds") 
 
             if relevance_result.lower().startswith('not related:') or relevance_result.lower().startswith('question:'):
                 return relevance_result.split(':', 1)[1].strip()
 
-            # Step 1: Classify project type if undefined
-            if not self.context['project_type']:
-                start_time = time.time()  # Test code - Kevin - Ernest
-                classification_task = self.planificator_task(question)
-                classification_crew = Crew(
-                    agents=[classification_task.agent],
-                    tasks=[classification_task],
-                    verbose=True
-                )
-                project_type_result = classification_crew.kickoff()
-                self.context['project_type'] = 'repair' if 'repair' in project_type_result.lower() else 'renovation'
-
-                execution_times['classification'] = round(time.time() - start_time, 2)  # Test code - Kevin - Ernest
-                print(f"Classification took: {execution_times['classification']} seconds")  # Test code - Kevin - Ernest
-
-
-            # Sequentially process tasks
-            sequential_tasks = [
-                (self.scheduling_task, 'schedule'),
-                (self.materials_task, 'materials'),
-                (self.tools_task, 'tools'),
-#                (self.guide_task, 'step_by_step_guide'),
-                (self.contractor_search_task, 'contractors'),
-                (self.safety_task, 'safety_guidance'),
-                (self.cost_estimation_task, 'cost_estimation'),
-            ]
-
             task_groups = [
-                # Level 1: No dependencies
                 [(self.scheduling_task, 'schedule')],
-                
-                # Level 2: Depends on schedule
                 [(self.materials_task, 'materials'),
                 (self.tools_task, 'tools'),
                 (self.contractor_search_task, 'contractors'),
                 (self.safety_task, 'safety_guidance')],
-                
-                # Level 3: Depends on materials and tools
                 [(self.cost_estimation_task, 'cost_estimation')]
             ]
-
-
             for level_tasks in task_groups:
                 threads = []
                 for task_method, context_key in level_tasks:
                     if not self.context.get(context_key):
-                        # Comprovem les dependències
                         dependencies = self.task_dependencies.get(context_key, set())
                         if all(self.context.get(dep) for dep in dependencies):
                             thread = Thread(
@@ -712,31 +608,26 @@ class CrewAIChatbot:
                             threads.append(thread)
                             thread.start()
                 
-                # Esperem que totes les tasques del nivell acabin
                 for thread in threads:
                     thread.join()
 
 
 
-            # Step 8: Presentation
-            start_time = time.time() # Test code - Kevin - Ernest
+            start_time = time.time() 
             presentation_task = self.presentation_task(question)
             presentation_crew = Crew(agents=[presentation_task.agent], tasks=[presentation_task], verbose=True)
             final_result = presentation_crew.kickoff()
-            execution_times['presentation'] = round(time.time() - start_time, 2) # Test code - Kevin - Ernest
-            print(f"Presentation took: {execution_times['presentation']} seconds") # Test code - Kevin - Ernest
+            execution_times['presentation'] = round(time.time() - start_time, 2) 
+            print(f"Presentation took: {execution_times['presentation']} seconds") 
 
-            # Print total execution time # Test code - Kevin - Ernest
-            total_time = round(sum(execution_times.values()), 2) # Test code - Kevin - Ernest
-            print(f"\nTotal execution time: {total_time} seconds") # Test code - Kevin - Ernest
+            total_time = round(sum(execution_times.values()), 2) 
+            print(f"\nTotal execution time: {total_time} seconds") 
 
-            # Print execution time summary # Test code - Kevin - Ernest
-            print("\nExecution time summary:") # Test code - Kevin - Ernest
-            for task, time_taken in execution_times.items(): # Test code - Kevin - Ernest
-                percentage = round((time_taken / total_time) * 100, 1) # Test code - Kevin - Ernest
-                print(f"{task.replace('_', ' ').title()}: {time_taken}s ({percentage}%)") # Test code - Kevin - Ernest
+            print("\nExecution time summary:") 
+            for task, time_taken in execution_times.items(): 
+                percentage = round((time_taken / total_time) * 100, 1) 
+                print(f"{task.replace('_', ' ').title()}: {time_taken}s ({percentage}%)") 
 
-            # Reset project after response
             self.reset_project()
 
             self.context['conversation_history'].append({"role": "assistant", "content": final_result})
