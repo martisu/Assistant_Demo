@@ -29,6 +29,7 @@ Demo para la implementación de Retrieval Augmented Generation (RAG) basada en O
 4. Instala las dependencias necesarias:
     ```bash
     pip install -r ../requirements.txt
+    python -m playwright install
     ```
 5. Desactiva el entorno virtual después de la instalación:
     ```bash
@@ -71,8 +72,8 @@ Esto abrirá la interfaz de usuario en tu navegador predeterminado. Podrás inte
 - Revisa la documentación oficial de [OpenAI](https://beta.openai.com/docs/) y [Streamlit](https://docs.streamlit.io/) para configuraciones avanzadas y opciones de personalización.
 
 **Autores:**
-- Javier San Juan, Data Science en Sopra Steria. Especialista en Inteligencia Artificial y Machine Learning.
-- Marlon Cárdenas, Data Science en Sopra Steria. Especialista en Inteligencia Artificial y Machine Learning.
+- Kevin Suin: Ingeniero Mecánico, con experiencia en Ciencia de Datos y Machine Learning 
+- Ernest Martínez: Ingeniero Técnico Informático, especializado en SAP
 
 <sub>**Nota:** Este documento ha sido elaborado por los autores con el fin de proporcionar una guía completa y detallada para la implementación de la demo RAG LLM. Para más información o consultas, por favor, contacte con el equipo de desarrollo a través de los canales oficiales de Sopra Steria.</sub>
 
