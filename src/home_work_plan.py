@@ -1,5 +1,5 @@
 
-from crewai import Agent, Task, Crew, Process
+from crewai import Agent, Task, Crew
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.tools import Tool
@@ -9,7 +9,6 @@ from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 
 
 from playwright.sync_api import sync_playwright
-from langchain.schema import Document
 from langchain.text_splitter import CharacterTextSplitter
 from threading import Thread
 
@@ -34,7 +33,7 @@ def retry_with_backoff(func, max_retries=4):
 
 class CrewAIChatbot:
 
-    HISTORY_LIMIT = 50  # Length of the history to consider
+    HISTORY_LIMIT = 30
 
     def __init__(self, credentials_path):
         self.credentials = self.load_credentials(credentials_path)
@@ -49,7 +48,6 @@ class CrewAIChatbot:
             'cost_estimation': {'schedule', 'materials', 'tools'} 
         }
 
-        # Set OpenAI API key in environment variables
         os.environ["AZURE_API_KEY"] = self.credentials["AZURE_API_KEY"]
         os.environ["AZURE_API_BASE"] = self.credentials["AZURE_ENDPOINT"]
         os.environ["AZURE_API_VERSION"] = self.credentials["AZURE_API_VERSION"]
@@ -90,14 +88,11 @@ class CrewAIChatbot:
                 pdf_path = os.path.join(pdf_dir, filename)
                 loader = PyPDFLoader(pdf_path)
                 
-                # Load and split the PDF
                 try:
                     documents = loader.load_and_split(text_splitter)
-                    print(f"Documents loaded for {filename}: {documents[:5]}")  # Debugging
+                    print(f"Documents loaded for {filename}: {documents[:5]}")  
                     
-                    # Handle documents properly based on their structure
                     if documents and isinstance(documents[0], str):
-                        # Handle case where documents are plain strings
                         limited_documents = documents[:5]
                         pdf_tool = Tool(
                             name=f"PDF_Reader_{filename}",
@@ -105,7 +100,6 @@ class CrewAIChatbot:
                             description=f"Use this tool to read and extract information from the PDF file {filename}"
                         )
                     elif documents and hasattr(documents[0], "page_content"):
-                        # Handle case where documents are objects with 'page_content'
                         limited_documents = documents[:5]
                         pdf_tool = Tool(
                             name=f"PDF_Reader_{filename}",
@@ -114,20 +108,18 @@ class CrewAIChatbot:
                         )
                     else:
                         print(f"Unexpected structure for documents in {filename}: {documents}")
-                        continue  # Skip if structure is not as expected
-
+                        continue  
                     pdf_tools.append(pdf_tool)
                 
                 except Exception as e:
                     print(f"Error loading or splitting PDF {filename}: {e}")
-                    continue  # Skip problematic PDFs
+                    continue  
         
         return pdf_tools
          
     def scrape_pages(self, section_type):
     
         try:
-            # Load the YAML data
             file_path = "data/sites/cost&contractors.yaml"
             with open(file_path, "r") as file:
                 yaml_data = yaml.safe_load(file)
@@ -185,7 +177,7 @@ class CrewAIChatbot:
             execution_times[context_key] = round(time.time() - start_time, 2)
             print(f"{context_key.replace('_', ' ').title()} took: {execution_times[context_key]} seconds")
             
-            return None  # No questions needed
+            return None  
         except Exception as e:
             print(f"Error in {context_key}: {str(e)}")
             raise
@@ -482,11 +474,9 @@ class CrewAIChatbot:
     @retry_with_backoff
     def tools_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        # schedule = self.context['schedule']
         return Task(
             description=f"Consider the conversation history: {recent_history}."
                         f"List the tools required for the following project: {project_description}. "
-                        # f"Consider schedule provided in context: {schedule}. "
                         f"The response should only contain the TOOLS and their quantities, without including MATERIALS. ",
             agent=self.tools_agent(),
             expected_output=(
@@ -503,7 +493,7 @@ class CrewAIChatbot:
     def cost_estimation_task(self, materials_list):
         materials = self.context['materials']
         while materials is None:
-            time.sleep(5)  # Wait for 5 second before checking again
+            time.sleep(5) 
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         return Task(
             description=(
@@ -529,16 +519,10 @@ class CrewAIChatbot:
     @retry_with_backoff
     def contractor_search_task(self, project_description):
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        # materials = self.context['materials']
-        # tools = self.context['tools']
-        # schedule = self.context['schedule']
         return Task(
             description=(
                 f"Consider the conversation history: {recent_history}."
                 f"Search for a maximum of two contractors who specialize in the following project in the specified location or nearby. "
-                # f"Consider materials provided in context: {schedule}. "
-                # f"Consider materials provided in context: {materials}. "
-                # f"Consider tools provided in context: {tools}. "
                 f"Provide contact details or links where the user can request a budget estimation. "
                 f"Ensure the contractors are well-reviewed or reputable, if possible. "
             ),
@@ -558,22 +542,11 @@ class CrewAIChatbot:
 
     @retry_with_backoff
     def safety_task(self, task_description):
-        # recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
-        # schedule = self.context['schedule']
-        # materials = self.context['materials']
-        # tools = self.context['tools']
-        # step_by_step_guide = self.context['step_by_step_guide']
         return Task(
             description=(
-                # f"Consider the conversation history: {recent_history}."
-                # f"Provide a careful, safety-focused guide for the following task: {task_description}. "
                 f"The instructions should prioritize accident prevention by outlining each step in detail, highlighting any safety risks,"
                 f"and suggesting appropriate protective measures or precautions. Emphasize where extra caution is needed."
                 f"Consider the question of the user: {task_description}."
-                # f"Consider materials in context: {materials}. " 
-                # f"Consider schedule in context: {schedule}. " 
-                # f"Consider tools in context: {tools}. "
-                # f"Consider step by step guide in context: {step_by_step_guide}. " 
             ),
             agent=self.safety_agent(),
             expected_output=(
@@ -622,7 +595,6 @@ class CrewAIChatbot:
         recent_history = self.context['conversation_history'][-self.HISTORY_LIMIT:]
         materials = self.context['materials']
         tools = self.context['tools']
-        # step_by_step_guide = self.context['step_by_step_guide']
         contractors = self.context['contractors']
         cost_estimation = self.context['cost_estimation']
         safety_guidance = self.context['safety_guidance']
@@ -636,10 +608,8 @@ class CrewAIChatbot:
                 f"safety guidance notes, and the project schedule. "
                 f"Ensure that the response is visually clear, well-organized, and presented in the user's language. "
                 f"If translation is necessary, adapt the response to the language detected in the user's question."
-                # f"Consider the question of the user: {task_description}."
                 f"Consider materials in context: {materials}." 
                 f"Consider tools in context: {tools}."
-#                f"Consider step by step guide in context: {step_by_step_guide}. (Also missing information if there is indicated)."
                 f"Consider contractors in context: {contractors}."
                 f"Consider cost estimation in context: {cost_estimation}."
                 f"Consider safety guidance notes in context: {safety_guidance}."
@@ -653,14 +623,12 @@ class CrewAIChatbot:
                 "Provide a structured and elegant response in markdown format, organizing all information clearly under distinct headings.\n"
                 "Must be displayed in a table if this is convenient.\n"
                 "Response must include all the following information:\n"
-                "- Materials (all known information including quantity).\n"
+                "- Materials (all known information including quantity). in a table alongside Cost estimation if the cost is available\n"
                 "- Tools (all known information including quantity).\n"
                 "- Step by step guide.\n"
                 "- Contractors with all available information (name, contact details, etc.).\n"
-                "- Cost estimation.\n"
                 "- Safety guidance notes.\n"
                 "- Project schedule with clear timelines and dependencies.\n"
-#                "- Questions asking for missing information if there is any.\n"
             )
         )
 
@@ -671,7 +639,7 @@ class CrewAIChatbot:
         try:
 
             self.context['conversation_history'].append({"role": "user", "content": question})
-            execution_times = {} # Test code - Kevin - Ernest
+            execution_times = {}
 
             # Step 0: Check relevance
             start_time = time.time() # Test code - Kevin - Ernest
@@ -779,3 +747,4 @@ class CrewAIChatbot:
             return f"Sorry, there was an issue with one of the tools or attributes: {str(e)}"
         except Exception as e:
             return f"An error occurred while processing your request: {str(e)}"
+
