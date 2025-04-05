@@ -1,5 +1,3 @@
-![Sopra Steria Logo](https://www.soprasteria.com/ResourcePackages/Bootstrap4/assets/dist/logos/logo-soprasteria.svg)
-
 # RAG LLM Demo
 
 Demo para la implementación de Retrieval Augmented Generation (RAG) basada en OpenAI GPT, diseñada para la utilización de archivos .docx y .pdf. Configura el tipo de asistente para que sea un experto en el dominio de datos proporcionados.
